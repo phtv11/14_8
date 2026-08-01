@@ -9,17 +9,18 @@ import {
 } from "../controllers/rttController";
 
 import apiKeyAuth from "../middleware/auth";
+import { validateTokenId, validateIssueRTT } from "../middleware/validate";
 
 const router = Router();
 
-router.post("/issue", apiKeyAuth, issueTicket);
+router.post("/issue", apiKeyAuth, validateIssueRTT, issueTicket);
 
-router.get("/status/:tokenId", getStatus);
+router.get("/status/:tokenId", validateTokenId, getStatus);
 
-router.get("/owner/:tokenId", ownerOf);
+router.get("/owner/:tokenId", validateTokenId, ownerOf);
 
-router.get("/info/:tokenId", getTokenInfo);
+router.get("/info/:tokenId", validateTokenId, getTokenInfo);
 
-router.get("/exists/:tokenId", exists);
+router.get("/exists/:tokenId", validateTokenId, exists);
 
 export default router;

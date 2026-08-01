@@ -1,51 +1,226 @@
 require("dotenv").config();
 
 async function main() {
+
     const [deployer] = await ethers.getSigners();
 
-    console.log("Deployer:", deployer.address);
+    console.log("--------------------------------");
+    console.log("Deploy wallet:", deployer.address);
+    console.log("--------------------------------");
+
 
     // ==========================
-    // Deploy RTB
+    // Deploy FIFARTB
     // ==========================
-    const RTB = await ethers.getContractFactory("FIFARTB");
-    const rtb = await RTB.deploy();
 
-    await rtb.deployed();
+    console.log("Deploying FIFARTB...");
 
-    console.log("RTB deployed to:", rtb.address);
-
-    // ==========================
-    // Deploy RTT
-    // ==========================
-    const RTT = await ethers.getContractFactory("FIFARTT");
-
-    const rtt = await RTT.deploy(
-        deployer.address, // admin
-        rtb.address       // địa chỉ RTB
+    const RTBFactory = await ethers.getContractFactory(
+        "FIFARTB"
     );
 
-    await rtt.deployed();
+    const rtb = await RTBFactory.deploy({
+    gasLimit: 3000000n
+    });
 
-    console.log("RTT deployed to:", rtt.address);
+    await rtb.waitForDeployment();
+
+    const rtbAddress = await rtb.getAddress();
+
+
+    console.log(
+        "FIFARTB deployed:",
+        rtbAddress
+    );
+
 
     // ==========================
-    // Liên kết RTB với RTT
+    // Deploy FIFARTT
     // ==========================
-    const tx = await rtb.setRTTContract(rtt.address);
+
+    console.log("Deploying FIFARTT...");
+
+
+    const RTTFactory = await ethers.getContractFactory(
+        "FIFARTT"
+    );
+
+
+    const rtt = await RTTFactory.deploy(
+    deployer.address,
+    rtbAddress,
+    {
+        gasLimit: 3000000n
+    }
+    );
+
+
+    await rtt.waitForDeployment();
+
+
+    const rttAddress = await rtt.getAddress();
+
+
+    console.log(
+        "FIFARTT deployed:",
+        rttAddress
+    );
+
+
+
+    // ==========================
+    // Link RTB -> RTT
+    // ==========================
+
+
+    console.log(
+        "Linking RTB with RTT..."
+    );
+
+
+    const tx = await rtb.setRTTContract(
+        rttAddress,
+        {
+            gasLimit: 500000n
+        }
+    );
+
     await tx.wait();
 
-    console.log("RTB linked to RTT");
 
-    console.log("------------------------------");
-    console.log("RTB Address :", rtb.address);
-    console.log("RTT Address :", rtt.address);
-    console.log("------------------------------");
+    console.log(
+        "RTB linked successfully"
+    );
+
+
+
+    // ==========================
+    // Grant OPERATOR_ROLE
+    // cho Backend
+    // ==========================
+
+
+    if(process.env.BACKEND_WALLET){
+
+        console.log(
+            "Grant OPERATOR_ROLE..."
+        );
+
+
+        const OPERATOR_ROLE =
+            await rtb.OPERATOR_ROLE();
+
+
+        const grantTx =
+            await rtb.grantRole(
+                OPERATOR_ROLE,
+                process.env.BACKEND_WALLET,
+                {
+                    gasLimit: 500000n
+                }
+            );
+
+
+        await grantTx.wait();
+
+
+        console.log(
+            "Backend wallet granted OPERATOR_ROLE"
+        );
+
+    }
+    else {
+
+        console.log(
+            "BACKEND_WALLET missing, skip role"
+        );
+
+    }
+
+
+
+    // ==========================
+    // Save address to .env files
+    // ==========================
+
+
+    const fs = require("fs");
+    const path = require("path");
+
+    function upsertEnvValue(filePath, key, value) {
+        const resolvedPath = path.resolve(filePath);
+        let content = "";
+
+        if (fs.existsSync(resolvedPath)) {
+            content = fs.readFileSync(resolvedPath, "utf8");
+        }
+
+        const regex = new RegExp(`^${key}=.*$`, "m");
+
+        if (regex.test(content)) {
+            content = content.replace(regex, `${key}=${value}`);
+        } else {
+            const trimmed = content.trimEnd();
+            content = trimmed ? `${trimmed}\n${key}=${value}\n` : `${key}=${value}\n`;
+        }
+
+        fs.writeFileSync(resolvedPath, content);
+    }
+
+
+    upsertEnvValue(
+        path.resolve(__dirname, "../.env"),
+        "RTB_ADDRESS",
+        rtbAddress
+    );
+
+    upsertEnvValue(
+        path.resolve(__dirname, "../.env"),
+        "RTT_ADDRESS",
+        rttAddress
+    );
+
+    upsertEnvValue(
+        path.resolve(__dirname, "../../backend/.env"),
+        "RTB_ADDRESS",
+        rtbAddress
+    );
+
+    upsertEnvValue(
+        path.resolve(__dirname, "../../backend/.env"),
+        "RTT_ADDRESS",
+        rttAddress
+    );
+
+    upsertEnvValue(
+        path.resolve(__dirname, "../../frontend/.env"),
+        "VITE_RTB_ADDRESS",
+        rtbAddress
+    );
+
+    upsertEnvValue(
+        path.resolve(__dirname, "../../frontend/.env"),
+        "VITE_RTT_ADDRESS",
+        rttAddress
+    );
+
+
+    console.log("--------------------------------");
+    console.log("DEPLOY FINISHED");
+    console.log("RTB:", rtbAddress);
+    console.log("RTT:", rttAddress);
+    console.log("--------------------------------");
+
 }
 
+
+
 main()
-    .then(() => process.exit(0))
-    .catch((error) => {
-        console.error(error);
-        process.exit(1);
-    });
+.then(() => process.exit(0))
+.catch((error)=>{
+
+    console.error(error);
+
+    process.exit(1);
+
+});

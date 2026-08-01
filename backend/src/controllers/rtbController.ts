@@ -1,9 +1,14 @@
-// ** Nhận dữ liệu từ Frontend, Gọi hàm trong rtbService.ts, Trả kết quả về Frontend **//
+import { Request, Response, NextFunction } from "express";
 
-import { Request, Response } from "express";
 import * as rtbService from "../services/rtbService";
-
-export async function mintRTB(req: Request, res: Response) {
+// ==========================
+// Mint RTB
+// ==========================
+export async function mintRTB(
+    req: Request,
+    res: Response,
+    next: NextFunction
+) {
     try {
         const { to, matchId } = req.body;
 
@@ -13,46 +18,80 @@ export async function mintRTB(req: Request, res: Response) {
             success: true,
             txHash
         });
-    } catch (error: any) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+    } catch (error) {
+        next(error);
     }
 }
 
-export async function transferRTB(req: Request, res: Response) {
+// ==========================
+// Owner Of
+// ==========================
+export async function ownerOf(
+    req: Request,
+    res: Response,
+    next: NextFunction
+) {
     try {
-        const { to, tokenId } = req.body;
+        const tokenId = Number(req.params.tokenId);
 
-        const txHash = await rtbService.transferRTB(to, tokenId);
+        const owner = await rtbService.ownerOf(tokenId);
 
         res.status(200).json({
             success: true,
-            txHash
+            owner
         });
-    } catch (error: any) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+    } catch (error) {
+        next(error);
     }
 }
 
-export async function redeemRTB(req: Request, res: Response) {
+// ==========================
+// Token Info
+// ==========================
+export async function getTokenInfo(
+    req: Request,
+    res: Response,
+    next: NextFunction
+) {
     try {
-        const { tokenId } = req.body;
+        const tokenId = Number(req.params.tokenId);
 
-        const txHash = await rtbService.redeemRTB(tokenId);
+        const info = await rtbService.getTokenInfo(tokenId);
 
         res.status(200).json({
             success: true,
-            txHash
+            data: info
         });
-    } catch (error: any) {
-        res.status(500).json({
-            success: false,
-            message: error.message
+    } catch (error) {
+        next(error);
+    }
+}
+
+// ==========================
+// Exists
+// ==========================
+export async function exists(
+    req: Request,
+    res: Response,
+    next: NextFunction
+) {
+
+    try {
+
+        const tokenId =
+            Number(req.params.tokenId);
+
+        const exists =
+            await rtbService.exists(
+                tokenId
+            );
+
+        res.status(200).json({
+            success: true,
+            exists
         });
+
+    } catch (error) {
+        next(error);
     }
 }
