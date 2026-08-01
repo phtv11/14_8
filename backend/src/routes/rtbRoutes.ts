@@ -2,19 +2,22 @@ import { Router } from "express";
 
 import {
     mintRTB,
-    transferRTB,
-    redeemRTB
+    ownerOf,
+    getTokenInfo,
+    exists
 } from "../controllers/rtbController";
+
+import apiKeyAuth from "../middleware/auth";
 
 const router = Router(); // Tạo một đối tượng Router để khai báo các API
 
 // Mint RTB
-router.post("/mint", mintRTB);
+router.post("/mint", apiKeyAuth, mintRTB);
 
-// Chuyển nhượng RTB
-router.post("/transfer", transferRTB);
+router.get("/owner/:tokenId", ownerOf);
 
-// Redeem RTB -> RTT
-router.post("/redeem", redeemRTB);
+router.get("/info/:tokenId", getTokenInfo);
+
+router.get("/exists/:tokenId", exists);
 
 export default router;

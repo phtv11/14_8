@@ -2,15 +2,24 @@ import { Router } from "express";
 
 import {
     issueTicket,
-    getStatus
+    getStatus,
+    ownerOf,
+    getTokenInfo,
+    exists
 } from "../controllers/rttController";
+
+import apiKeyAuth from "../middleware/auth";
 
 const router = Router();
 
-// Phát hành vé chính thức
-router.post("/issue", issueTicket);
+router.post("/issue", apiKeyAuth, issueTicket);
 
-// Lấy trạng thái RTT
 router.get("/status/:tokenId", getStatus);
+
+router.get("/owner/:tokenId", ownerOf);
+
+router.get("/info/:tokenId", getTokenInfo);
+
+router.get("/exists/:tokenId", exists);
 
 export default router;
