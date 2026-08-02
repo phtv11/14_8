@@ -17,7 +17,7 @@ export function startIndexer() {
 
     console.log("Indexer: listening to RTB events");
 
-    rtbContract.on("RTBMinted", async (tokenId: ethers.BigNumber, to: string, matchId: string, event: any) => {
+    rtbContract.on("RTBMinted", async (tokenId: any, to: string, matchId: string, event: any) => {
         try {
             const id = Number(tokenId.toString());
             await upsertTokenIndex({
@@ -33,7 +33,7 @@ export function startIndexer() {
         }
     });
 
-    rtbContract.on("RTBTransferred", async (tokenId: ethers.BigNumber, from: string, to: string, event: any) => {
+    rtbContract.on("RTBTransferred", async (tokenId: any, from: string, to: string, event: any) => {
         try {
             const id = Number(tokenId.toString());
             await upsertTokenIndex({
@@ -47,7 +47,7 @@ export function startIndexer() {
         }
     });
 
-    rtbContract.on("RedeemedToRTT", async (rtbTokenId: ethers.BigNumber, holder: string, rttTokenId: ethers.BigNumber, event: any) => {
+    rtbContract.on("RedeemedToRTT", async (rtbTokenId: any, holder: string, rttTokenId: any, event: any) => {
         try {
             const rtbId = Number(rtbTokenId.toString());
             const rttId = Number(rttTokenId.toString());
