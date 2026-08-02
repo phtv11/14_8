@@ -106,7 +106,8 @@ export async function ownerOf(
 ) {
 
     try {
-        const param = req.params.tokenId;
+        const rawParam = req.params.tokenId;
+        const param = Array.isArray(rawParam) ? rawParam[0] : (rawParam || "");
         const maybeId = Number(param);
 
         if (!isNaN(maybeId) && String(maybeId) === param) {

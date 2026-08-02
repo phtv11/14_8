@@ -45,7 +45,8 @@ export async function ownerOf(
     next: NextFunction
 ) {
     try {
-        const param = req.params.tokenId;
+        const rawParam = req.params.tokenId;
+        const param = Array.isArray(rawParam) ? rawParam[0] : (rawParam || "");
 
         // If numeric tokenId -> return owner of single token on-chain
         const maybeId = Number(param);
