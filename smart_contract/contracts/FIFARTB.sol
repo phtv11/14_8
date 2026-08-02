@@ -38,6 +38,8 @@ contract FIFARTB is ERC721, AccessControl {
     }
 
     mapping(uint256 => TokenInfo) public tokenInfo;
+    mapping(string => uint256) public maxSupply;
+    mapping(string => uint256) public minted;
     uint256 public nextTokenId = 1;
 
     /// @notice Địa chỉ contract FIFARTT — nơi nhận lệnh mint khi holder redeem RTB -> RTT.
@@ -51,6 +53,7 @@ contract FIFARTB is ERC721, AccessControl {
     event RTBTransferred(uint256 indexed tokenId, address indexed from, address indexed to);
     event RedeemedToRTT(uint256 indexed rtbTokenId, address indexed holder, uint256 indexed rttTokenId);
     event RTTContractSet(address indexed rttContract);
+    event MaxSupplySet(string indexed matchId, uint256 maxSupply);
 
     constructor() ERC721("FIFA Right-to-Buy Demo", "RTB-DEMO") {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -64,11 +67,24 @@ contract FIFARTB is ERC721, AccessControl {
         emit RTTContractSet(rttAddress);
     }
 
+    /// @notice Admin đặt giới hạn RTB tối đa cho một trận.
+    function setMaxSupply(string calldata matchId, uint256 supply) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(bytes(matchId).length > 0, "MatchId khong hop le");
+        require(supply > 0, "Max supply phai lon hon 0");
+        require(supply >= minted[matchId], "Max supply nho hon so da mint");
+        maxSupply[matchId] = supply;
+        emit MaxSupplySet(matchId, supply);
+    }
+
     /// @notice Backend (operator) mint RTB vào ví của người dùng sau khi họ thanh toán qua kênh Web2.
     function mintRTB(address to, string calldata matchId) external onlyRole(OPERATOR_ROLE) returns (uint256) {
+        require(maxSupply[matchId] > 0, "Chua dat max supply cho tran");
+        require(minted[matchId] < maxSupply[matchId], "Da het luong RTB cho tran");
+
         uint256 tokenId = nextTokenId++;
         _safeMint(to, tokenId);
         tokenInfo[tokenId] = TokenInfo({matchId: matchId, mintedAt: block.timestamp});
+        minted[matchId] += 1;
         emit RTBMinted(tokenId, to, matchId);
         return tokenId;
     }

@@ -23,39 +23,24 @@ export async function pay(
 
 
         const {
-
             userAddress,
-
             rtbTokenId,
-
             matchId,
-
             category,
-
             seat,
-
-            price
-
-
+            price,
+            idempotencyKey
         } = req.body;
-
-
 
         const result =
             await paymentService.pay(
-
                 userAddress,
-
                 rtbTokenId,
-
                 matchId,
-
                 category,
-
                 seat,
-
-                price
-
+                price,
+                idempotencyKey
             );
 
 

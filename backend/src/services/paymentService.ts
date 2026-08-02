@@ -1,37 +1,14 @@
 import { ethers } from "ethers";
 import { provider } from "../config/blockchain";
 import RTB from "../contracts/FIFARTB.json";
-
-
-// ================================
-// Demo database
-// Sau này thay bằng SQL/MongoDB
-// ================================
-
-interface Order {
-
-    orderId: string;
-
-    userAddress: string;
-
-    rtbTokenId: number;
-
-    matchId: string;
-
-    category: string;
-
-    seat: string;
-
-    price: number;
-
-    status: string;
-
-    rttTokenId?: number;
-
-}
-
-
-const orders: Order[] = [];
+import {
+    createOrder,
+    findOrderById,
+    findOrderByIdempotencyKey,
+    findOrderByRtbTokenId,
+    updateOrderStatus as updateOrderStatusRepo,
+    OrderRow
+} from "../repositories/orderRepository";
 
 
 
@@ -41,107 +18,54 @@ const orders: Order[] = [];
 // ================================
 
 export async function pay(
+    userAddress: string,
+    rtbTokenId: number,
+    matchId: string,
+    category: string,
+    seat: string,
+    price: number,
+    idempotencyKey?: string
+) {
+    if (!userAddress) throw new Error("Thiếu địa chỉ user");
+    if (!matchId) throw new Error("Match không hợp lệ");
+    if (!category) throw new Error("Category không hợp lệ");
+    if (!seat) throw new Error("Seat không hợp lệ");
+    if (price <= 0) throw new Error("Giá vé không hợp lệ");
 
-    userAddress:string,
+    if (idempotencyKey) {
+        const existing = await findOrderByIdempotencyKey(idempotencyKey);
+        if (existing) {
+            return {
+                message: "Order đã tồn tại",
+                orderId: existing.id,
+                status: existing.status
+            };
+        }
+    }
 
-    rtbTokenId:number,
-
-    matchId:string,
-
-    category:string,
-
-    seat:string,
-
-    price:number
-
-){
-
-    if(!userAddress)
-        throw new Error(
-            "Thiếu địa chỉ user"
-        );
-
-
-    if(!matchId)
-        throw new Error(
-            "Match không hợp lệ"
-        );
-
-
-    if(!category)
-        throw new Error(
-            "Category không hợp lệ"
-        );
-
-
-    if(!seat)
-        throw new Error(
-            "Seat không hợp lệ"
-        );
-
-
-    if(price <= 0)
-        throw new Error(
-            "Giá vé không hợp lệ"
-        );
-
-
-
-    // giả lập thanh toán thành công
-
-    const paymentStatus = true;
-
-
-    if(!paymentStatus)
-        throw new Error(
-            "Thanh toán thất bại"
-        );
-
-
-
-    const orderId =
-        `ORDER_${Date.now()}`;
-
-
-
-    const order:Order = {
-
-        orderId,
-
-        userAddress,
-
-        rtbTokenId,
-
+    const orderId = `ORDER_${Date.now()}`;
+    const order: OrderRow = {
+        id: orderId,
+        userId: userAddress,
         matchId,
-
         category,
-
         seat,
-
         price,
-
-        status:"PENDING"
-
+        status: "PENDING",
+        rtbTokenId,
+        rttTokenId: null,
+        txHash: null,
+        idempotencyKey: idempotencyKey || null,
+        createdAt: new Date()
     };
 
-
-
-    orders.push(order);
-
-
+    await createOrder(order);
 
     return {
-
-        message:
-        "Tạo order thành công",
-
+        message: "Tạo order thành công",
         orderId,
-
-        status:
-        "PENDING"
-
+        status: "PENDING"
     };
-
 }
 
 
@@ -152,15 +76,8 @@ export async function pay(
 // Lấy Order
 // ================================
 
-export async function getOrder(
-    orderId:string
-){
-
-    return orders.find(
-        order =>
-        order.orderId === orderId
-    );
-
+export async function getOrder(orderId: string) {
+    return await findOrderById(orderId);
 }
 
 
@@ -285,13 +202,7 @@ export async function processRedeemTx(
 
 
 
-    const order =
-        orders.find(
-            item =>
-            item.rtbTokenId === rtbTokenId
-        );
-
-
+    const order = await findOrderByRtbTokenId(rtbTokenId);
 
     if(!order)
         throw new Error(
@@ -300,16 +211,15 @@ export async function processRedeemTx(
 
 
 
-    order.status =
-        "REDEEMED";
+    const updated = await updateOrderStatusRepo(
+        order.id,
+        "REDEEMED",
+        rttTokenId
+    );
 
 
-    order.rttTokenId =
-        rttTokenId;
 
-
-
-    return order;
+    return updated;
 
 }
 
@@ -331,36 +241,9 @@ export async function updateOrderStatus(
     rttTokenId?:number
 
 ){
-
-    const order =
-        orders.find(
-            item =>
-            item.orderId === orderId
-        );
-
-
-
-    if(!order)
-        throw new Error(
-            "Không tìm thấy order"
-        );
-
-
-
-    order.status =
-        status;
-
-
-
-    if(rttTokenId){
-
-        order.rttTokenId =
-            rttTokenId;
-
-    }
-
-
-
-    return order;
-
+    return await updateOrderStatusRepo(
+        orderId,
+        status,
+        rttTokenId
+    );
 }
