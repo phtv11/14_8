@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 
 import * as rtbService from "../services/rtbService";
+import { updateOrderAfterMint } from "../repositories/orderRepository";
 // ==========================
 // Mint RTB
 // ==========================
@@ -10,13 +11,24 @@ export async function mintRTB(
     next: NextFunction
 ) {
     try {
-        const { to, matchId } = req.body;
+        const { to, matchId, orderId } = req.body;
 
-        const txHash = await rtbService.mintRTB(to, matchId);
+        const result = await rtbService.mintRTB(to, matchId);
+
+        // If frontend provided an orderId, update order to record rtbTokenId and txHash
+        if (orderId && typeof orderId === "string") {
+            try {
+                await updateOrderAfterMint(orderId, result.tokenId, result.txHash);
+            } catch (e) {
+                // Log and continue; do not fail the mint response for order update failure
+                console.error("Failed to update order after mint:", e);
+            }
+        }
 
         res.status(200).json({
             success: true,
-            txHash
+            txHash: result.txHash,
+            tokenId: result.tokenId
         });
     } catch (error) {
         next(error);

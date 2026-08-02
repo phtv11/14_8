@@ -14,7 +14,10 @@ const rtbContract = new ethers.Contract(
 export async function mintRTB(
     to: string,
     matchId: string
-): Promise<string> {
+): Promise<{ txHash: string; tokenId: number }> {
+
+    // Determine next tokenId before mint to know which token will be minted
+    const tokenId = await getNextTokenId();
 
     const tx = await rtbContract.mintRTB(
         to,
@@ -23,7 +26,7 @@ export async function mintRTB(
 
     await tx.wait();
 
-    return tx.hash;
+    return { txHash: tx.hash, tokenId };
 }
 
 // ==========================

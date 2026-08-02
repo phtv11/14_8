@@ -37,28 +37,27 @@ export async function mintRTB(
 
     to:string,
 
-    matchId:string
+    matchId:string,
+
+    orderId?: string
 
 ){
 
+
+    const body: any = { to, matchId };
+    if (orderId) body.orderId = orderId;
 
     const response =
         await api.post(
 
             "/rtb/mint",
 
-            {
-
-                to,
-
-                matchId
-
-            }
+            body
 
         );
 
 
-    return response.data;
+    return response.data; // { txHash, tokenId }
 
 
 }
