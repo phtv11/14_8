@@ -1,7 +1,14 @@
 // ** Nhận dữ liệu từ Frontend, Gọi hàm trong rttService.ts, Trả kết quả về Frontend **//
 
 import { Request, Response, NextFunction } from "express";
+import { HttpError } from "../middleware/validate";
 import * as rttService from "../services/rttService";
+import {
+    findOrderByRttTokenId,
+    updateOrderAfterIssue
+} from "../repositories/orderRepository";
+import { findMatchById } from "../repositories/matchRepository";
+import { findTokensByOwner } from "../repositories/tokenIndexRepository";
 
 // ==========================
 // Issue Official Ticket
@@ -14,16 +21,33 @@ export async function issueTicket(
 
     try {
 
-        const {
+        const tokenId = Number(req.body?.tokenId);
+        let ticketRef = typeof req.body?.ticketRef === "string" ? req.body.ticketRef.trim() : "";
+        let order = null;
+
+        if (!ticketRef) {
+            order = await findOrderByRttTokenId(tokenId);
+
+            if (!order) {
+                throw new HttpError(404, "Không tìm thấy order tương ứng với tokenId");
+            }
+
+            const match = await findMatchById(order.matchId);
+            ticketRef = `user:${order.userId};match:${match?.name ?? order.matchId};seat:${order.seat}`;
+        }
+
+        const txHash = await rttService.issueTicket(
             tokenId,
             ticketRef
-        } = req.body;
+        );
 
-        const txHash =
-            await rttService.issueTicket(
-                tokenId,
-                ticketRef
-            );
+        if (!order) {
+            order = await findOrderByRttTokenId(tokenId);
+        }
+
+        if (order) {
+            await updateOrderAfterIssue(order.id, tokenId);
+        }
 
         res.status(200).json({
             success: true,
@@ -82,19 +106,17 @@ export async function ownerOf(
 ) {
 
     try {
+        const param = req.params.tokenId;
+        const maybeId = Number(param);
 
-        const tokenId =
-            Number(req.params.tokenId);
+        if (!isNaN(maybeId) && String(maybeId) === param) {
+            const owner = await rttService.ownerOf(maybeId);
+            return res.status(200).json({ success: true, owner });
+        }
 
-        const owner =
-            await rttService.ownerOf(
-                tokenId
-            );
-
-        res.status(200).json({
-            success: true,
-            owner
-        });
+        const ownerAddress = param;
+        const tokens = await findTokensByOwner("RTT", ownerAddress);
+        return res.status(200).json({ success: true, tokens });
 
     }
     catch (error) {

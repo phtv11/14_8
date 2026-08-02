@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 
 import * as rtbService from "../services/rtbService";
 import { updateOrderAfterMint } from "../repositories/orderRepository";
+import { findTokensByOwner, findToken } from "../repositories/tokenIndexRepository";
 // ==========================
 // Mint RTB
 // ==========================
@@ -44,14 +45,20 @@ export async function ownerOf(
     next: NextFunction
 ) {
     try {
-        const tokenId = Number(req.params.tokenId);
+        const param = req.params.tokenId;
 
-        const owner = await rtbService.ownerOf(tokenId);
+        // If numeric tokenId -> return owner of single token on-chain
+        const maybeId = Number(param);
+        if (!isNaN(maybeId) && String(maybeId) === param) {
+            const owner = await rtbService.ownerOf(maybeId);
+            return res.status(200).json({ success: true, owner });
+        }
 
-        res.status(200).json({
-            success: true,
-            owner
-        });
+        // Otherwise treat param as owner address and return indexed tokens
+        const ownerAddress = param;
+        const tokens = await findTokensByOwner("RTB", ownerAddress);
+        return res.status(200).json({ success: true, tokens });
+
     } catch (error) {
         next(error);
     }

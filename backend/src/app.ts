@@ -4,7 +4,9 @@ import cors from "cors";
 import rtbRoutes from "./routes/rtbRoutes";
 import rttRoutes from "./routes/rttRoutes";
 import paymentRoutes from "./routes/paymentRoutes";
+import matchRoutes from "./routes/matchRoutes";
 import errorHandler from "./middleware/errorHandler";
+import { startIndexer } from "./services/indexerService";
 
 const app = express();
 
@@ -19,6 +21,16 @@ app.use("/api/payment", paymentRoutes);
 
 // RTT API
 app.use("/api/rtt", rttRoutes);
+
+// Matches
+app.use("/api/matches", matchRoutes);
+
+// Start blockchain indexer (non-blocking)
+try {
+    startIndexer();
+} catch (e) {
+    console.error("Failed to start indexer:", e);
+}
 
 app.use(errorHandler);
 
