@@ -9,65 +9,101 @@ export function startIndexer() {
     if (started) return;
     started = true;
 
-    const rtbContract = new ethers.Contract(
-        process.env.RTB_ADDRESS!,
-        RTB.abi,
-        provider as any
-    );
+    const rtbInterface = new ethers.Interface(RTB.abi);
+    const address = process.env.RTB_ADDRESS;
 
-    console.log("Indexer: listening to RTB events");
+    if (!address) {
+        console.error("Indexer: RTB_ADDRESS not configured, indexer not started");
+        return;
+    }
 
-    rtbContract.on("RTBMinted", async (tokenId: any, to: string, matchId: string, event: any) => {
+    console.log("Indexer: starting poller for RTB events, contract=", address);
+
+    (async () => {
         try {
-            const id = Number(tokenId.toString());
-            await upsertTokenIndex({
-                collection: "RTB",
-                tokenId: id,
-                owner: to,
-                matchId,
-                mintedAt: new Date(),
-                txHash: event?.transactionHash || null
-            });
+            // Start from a few blocks behind to be safe for near-past events
+            const current = await provider.getBlockNumber();
+            let lastChecked = Math.max(0, current - 10);
+
+            const POLL_INTERVAL = Number(process.env.INDEXER_POLL_INTERVAL_MS || 5000);
+
+            setInterval(async () => {
+                try {
+                    const toBlock = await provider.getBlockNumber();
+                    if (toBlock <= lastChecked) return;
+
+                    const fromBlock = lastChecked + 1;
+
+                    // Fetch logs for the contract address in the block range
+                    const logs = await provider.getLogs({
+                        address,
+                        fromBlock,
+                        toBlock
+                    });
+
+                    for (const log of logs) {
+                        try {
+                            const parsed = rtbInterface.parseLog({ topics: log.topics as string[], data: log.data });
+
+                            if (!parsed || !parsed.name) continue;
+
+                            const txHash = log.transactionHash || null;
+
+                            if (parsed.name === "RTBMinted") {
+                                const tokenId = Number(parsed.args.tokenId?.toString());
+                                const to = String(parsed.args.to);
+                                const matchId = String(parsed.args.matchId);
+                                await upsertTokenIndex({
+                                    collection: "RTB",
+                                    tokenId,
+                                    owner: to,
+                                    matchId,
+                                    mintedAt: new Date(),
+                                    txHash
+                                });
+                            } else if (parsed.name === "RTBTransferred" || parsed.name === "Transfer") {
+                                // Transfer signature may appear as Transfer or RTBTransferred depending on contract
+                                const tokenId = Number(parsed.args.tokenId?.toString());
+                                const to = String(parsed.args.to ?? parsed.args[2]);
+                                await upsertTokenIndex({
+                                    collection: "RTB",
+                                    tokenId,
+                                    owner: to,
+                                    txHash
+                                });
+                            } else if (parsed.name === "RedeemedToRTT") {
+                                const rtbTokenId = Number(parsed.args.rtbTokenId?.toString());
+                                const holder = String(parsed.args.holder ?? parsed.args[1]);
+                                const rttTokenId = Number(parsed.args.rttTokenId?.toString());
+
+                                await upsertTokenIndex({
+                                    collection: "RTB",
+                                    tokenId: rtbTokenId,
+                                    owner: holder,
+                                    txHash
+                                });
+
+                                await upsertTokenIndex({
+                                    collection: "RTT",
+                                    tokenId: rttTokenId,
+                                    owner: holder,
+                                    txHash
+                                });
+                            }
+                        } catch (e) {
+                            // parseLog may throw for logs not matching ABI — skip silently
+                            continue;
+                        }
+                    }
+
+                    lastChecked = toBlock;
+                } catch (e) {
+                    console.error("Indexer poll error:", e);
+                }
+            }, POLL_INTERVAL);
+
         } catch (e) {
-            console.error("Indexer RTBMinted handler error:", e);
+            console.error("Indexer startup error:", e);
         }
-    });
-
-    rtbContract.on("RTBTransferred", async (tokenId: any, from: string, to: string, event: any) => {
-        try {
-            const id = Number(tokenId.toString());
-            await upsertTokenIndex({
-                collection: "RTB",
-                tokenId: id,
-                owner: to,
-                txHash: event?.transactionHash || null
-            });
-        } catch (e) {
-            console.error("Indexer RTBTransferred handler error:", e);
-        }
-    });
-
-    rtbContract.on("RedeemedToRTT", async (rtbTokenId: any, holder: string, rttTokenId: any, event: any) => {
-        try {
-            const rtbId = Number(rtbTokenId.toString());
-            const rttId = Number(rttTokenId.toString());
-
-            // Mark RTB owner to holder (should be same) and insert RTT entry
-            await upsertTokenIndex({
-                collection: "RTB",
-                tokenId: rtbId,
-                owner: holder,
-                txHash: event?.transactionHash || null
-            });
-
-            await upsertTokenIndex({
-                collection: "RTT",
-                tokenId: rttId,
-                owner: holder,
-                txHash: event?.transactionHash || null
-            });
-        } catch (e) {
-            console.error("Indexer RedeemedToRTT handler error:", e);
-        }
-    });
+    })();
 }
