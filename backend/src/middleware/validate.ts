@@ -61,6 +61,16 @@ export function validateTokenId(req: Request, res: Response, next: NextFunction)
     return next();
 }
 
+export function validateAddress(req: Request, res: Response, next: NextFunction) {
+    const raw = req.params.address || req.params.owner || req.params.tokenId;
+    const addr = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof addr !== "string" || !ethers.isAddress(addr)) {
+        return next(new HttpError(400, "Invalid address"));
+    }
+
+    return next();
+}
+
 export function validateIssueRTT(req: Request, res: Response, next: NextFunction) {
     const tokenId = Number(req.body?.tokenId);
     const ticketRef = req.body?.ticketRef;
@@ -69,7 +79,7 @@ export function validateIssueRTT(req: Request, res: Response, next: NextFunction
         return next(new HttpError(400, "Invalid tokenId"));
     }
 
-    if (typeof ticketRef !== "string" || !ticketRef.trim()) {
+    if (ticketRef !== undefined && typeof ticketRef !== "string") {
         return next(new HttpError(400, "Invalid ticketRef"));
     }
 

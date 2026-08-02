@@ -10,7 +10,8 @@ import {
 import apiKeyAuth from "../middleware/auth";
 import {
     validateMintRTB,
-    validateTokenId
+    validateTokenId,
+    validateAddress
 } from "../middleware/validate";
 
 const router = Router(); // Tạo một đối tượng Router để khai báo các API
@@ -18,9 +19,14 @@ const router = Router(); // Tạo một đối tượng Router để khai báo c
 // Mint RTB
 router.post("/mint", apiKeyAuth, validateMintRTB, mintRTB);
 
-router.get("/owner/:tokenId", validateTokenId, ownerOf);
+// Owner by address (indexed)
+router.get("/owner/:address", validateAddress, ownerOf);
 
+// Token info by id
 router.get("/info/:tokenId", validateTokenId, getTokenInfo);
+
+// Convenience: GET /api/rtb/:tokenId -> token info
+router.get("/:tokenId", validateTokenId, getTokenInfo);
 
 router.get("/exists/:tokenId", validateTokenId, exists);
 
