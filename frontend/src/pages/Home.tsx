@@ -47,7 +47,14 @@ export default function Home() {
                         </div>
                     </div>
 
-                    <CollectPackCard />
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        {matches.map((match) => (
+                            <CollectPackCard
+                                key={match.matchId}
+                                match={match}
+                            />
+                        ))}
+                    </div>
                 </section>
 
                 <section className="mx-auto w-full pb-16">
