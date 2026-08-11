@@ -1,12 +1,24 @@
 import { ethers } from "ethers";
+import dotenv from "dotenv";
 import { wallet } from "../config/blockchain";
 import RTB from "../contracts/FIFARTB.json";
 
-const rtbContract = new ethers.Contract(
-    process.env.RTB_ADDRESS!,
-    RTB.abi,
-    wallet
-);
+dotenv.config({ override: true });
+
+function getRTBContract() {
+    dotenv.config({ override: true });
+
+    const rtbAddress = process.env.RTB_ADDRESS;
+    if (!rtbAddress) {
+        throw new Error("RTB_ADDRESS chưa được cấu hình");
+    }
+
+    return new ethers.Contract(
+        rtbAddress,
+        RTB.abi,
+        wallet
+    );
+}
 
 // ==========================
 // Mint RTB (Backend ký)
@@ -15,6 +27,8 @@ export async function mintRTB(
     to: string,
     matchId: string
 ): Promise<{ txHash: string; tokenId: number }> {
+
+    const rtbContract = getRTBContract();
 
     // Determine next tokenId before mint to know which token will be minted
     const tokenId = await getNextTokenId();
@@ -35,6 +49,7 @@ export async function mintRTB(
 export async function ownerOf(
     tokenId: number
 ): Promise<string> {
+    const rtbContract = getRTBContract();
 
     return await rtbContract.ownerOf(
         tokenId
@@ -47,6 +62,7 @@ export async function ownerOf(
 export async function getTokenInfo(
     tokenId: number
 ) {
+    const rtbContract = getRTBContract();
 
     const info = await rtbContract.tokenInfo(
         tokenId
@@ -66,6 +82,7 @@ export async function getTokenInfo(
 export async function exists(
     tokenId: number
 ): Promise<boolean> {
+    const rtbContract = getRTBContract();
 
     try {
 
@@ -87,6 +104,7 @@ export async function exists(
 // Lấy tokenId sẽ được mint tiếp theo
 // ==========================
 export async function getNextTokenId(): Promise<number> {
+    const rtbContract = getRTBContract();
 
     const id =
         await rtbContract.nextTokenId();
@@ -99,6 +117,7 @@ export async function getNextTokenId(): Promise<number> {
 // Lấy địa chỉ RTT Contract
 // ==========================
 export async function getRTTContract(): Promise<string> {
+    const rtbContract = getRTBContract();
 
     return await rtbContract.rttContract();
 
@@ -110,6 +129,7 @@ export async function getRTTContract(): Promise<string> {
 export async function isOperator(
     address: string
 ): Promise<boolean> {
+    const rtbContract = getRTBContract();
 
     const role =
         await rtbContract.OPERATOR_ROLE();
@@ -127,6 +147,7 @@ export async function isOperator(
 export async function isAdmin(
     address: string
 ): Promise<boolean> {
+    const rtbContract = getRTBContract();
 
     const role =
         await rtbContract.DEFAULT_ADMIN_ROLE();
@@ -142,6 +163,7 @@ export async function isAdmin(
 // Lấy tên Collection
 // ==========================
 export async function getName(): Promise<string> {
+    const rtbContract = getRTBContract();
 
     return await rtbContract.name();
 
@@ -151,6 +173,7 @@ export async function getName(): Promise<string> {
 // Lấy Symbol
 // ==========================
 export async function getSymbol(): Promise<string> {
+    const rtbContract = getRTBContract();
 
     return await rtbContract.symbol();
 
@@ -160,6 +183,7 @@ export async function getSymbol(): Promise<string> {
 // Lấy địa chỉ Contract
 // ==========================
 export async function getContractAddress(): Promise<string> {
+    const rtbContract = getRTBContract();
 
     return await rtbContract.getAddress();
 

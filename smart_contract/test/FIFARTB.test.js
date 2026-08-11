@@ -77,6 +77,28 @@ describe("FIFARTB Lifecycle", function () {
 
 
 
+    it("mint RTB không cần set max supply trước vẫn thành công với giá trị mặc định",
+    async function () {
+
+
+        await rtb
+        .connect(backend)
+        .mintRTB(
+            user.address,
+            "WC26-FINAL"
+        );
+
+
+        expect(
+            await rtb.ownerOf(1)
+        )
+        .to.equal(
+            user.address
+        );
+
+    });
+
+
     it("mint RTB -> owner đúng, matchId đúng",
     async function () {
 

@@ -30,7 +30,7 @@ export function getProvider(){
 
         throw new Error(
             "MetaMask chưa được cài"
-        );
+                    );
 
     }
 
@@ -48,7 +48,7 @@ export function getProvider(){
 // Gọi MetaMask lấy địa chỉ user
 // ==================================================
 
-export async function connectWallet(): Promise<string> {
+export async function connectWallet(forceReconnect = false): Promise<string> {
 
 
     if(!window.ethereum){
@@ -59,7 +59,16 @@ export async function connectWallet(): Promise<string> {
 
     }
 
-
+    if (forceReconnect) {
+        try {
+            await window.ethereum.request({
+                method: "wallet_revokePermissions",
+                params: [{ eth_accounts: {} }]
+            });
+        } catch {
+            // ignore revoke errors and continue with a fresh request
+        }
+    }
 
     const accounts =
         await window.ethereum.request({
@@ -81,14 +90,12 @@ export async function connectWallet(): Promise<string> {
 
 
     return accounts[0];
-
 }
 
 // ==============================
 // Signer
 // User ký transaction
 // ==============================
-
 async function getSigner(){
 
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ArrowRightLeft, Ticket, Sparkles } from "lucide-react";
-import { transferRTB, redeemRTB } from "../services/contract";
+import { useNavigate } from "react-router-dom";
+import { matches } from "../data/matches";
 
 interface RTBProps {
     tokenId: number;
@@ -9,35 +10,35 @@ interface RTBProps {
 }
 
 export default function RTBCard({ tokenId, matchId, owner }: RTBProps) {
-    const [loading, setLoading] = useState(false);
+    const navigate = useNavigate();
     const [message, setMessage] = useState("");
 
     async function handleTransfer() {
         try {
-            const receiver = window.prompt("Nhập địa chỉ ví nhận RTB:");
-            if (!receiver) {
-                return;
-            }
-
-            setLoading(true);
-            const txHash = await transferRTB(receiver, tokenId);
-            setMessage("Transfer thành công: " + txHash.substring(0, 12) + "...");
+            navigate("/marketplace", {
+                state: {
+                    tokenId,
+                    matchId,
+                    owner
+                }
+            });
         } catch (error: any) {
-            setMessage(error.message);
-        } finally {
-            setLoading(false);
+            setMessage(error.message || "Không thể mở marketplace");
         }
     }
 
     async function handleRedeem() {
         try {
-            setLoading(true);
-            const txHash = await redeemRTB(tokenId);
-            setMessage("Redeem thành công: " + txHash.substring(0, 12) + "...");
+            const matched = matches.find((m) => m.matchId === matchId) ?? { matchId, teamA: matchId, teamB: "", date: "", stadium: "", category: "" };
+            navigate("/payment", {
+                state: {
+                    purchaseMode: "rtb-right",
+                    match: matched,
+                    rtbTokenId: tokenId
+                }
+            });
         } catch (error: any) {
-            setMessage(error.message);
-        } finally {
-            setLoading(false);
+            setMessage(error.message || "Không thể chuyển đến trang thanh toán");
         }
     }
 
@@ -64,12 +65,12 @@ export default function RTBCard({ tokenId, matchId, owner }: RTBProps) {
             </div>
 
             <div className="mt-6 flex flex-col gap-3">
-                <button disabled={loading} onClick={handleTransfer} className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-slate-800 px-4 py-3 font-medium text-slate-100 transition hover:bg-slate-700">
+                <button onClick={handleTransfer} className="flex items-center justify-center gap-2 rounded-full border border-white/10 bg-slate-800 px-4 py-3 font-medium text-slate-100 transition hover:bg-slate-700">
                     <ArrowRightLeft size={18} />
                     Transfer RTB
                 </button>
 
-                <button disabled={loading} onClick={handleRedeem} className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 px-4 py-3 font-semibold text-white shadow-lg shadow-blue-500/20 transition hover:scale-[1.01]">
+                <button onClick={handleRedeem} className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 px-4 py-3 font-semibold text-white shadow-lg shadow-blue-500/20 transition hover:scale-[1.01]">
                     <Sparkles size={18} />
                     Redeem RTB
                 </button>

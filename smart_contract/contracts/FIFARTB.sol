@@ -78,7 +78,9 @@ contract FIFARTB is ERC721, AccessControl {
 
     /// @notice Backend (operator) mint RTB vào ví của người dùng sau khi họ thanh toán qua kênh Web2.
     function mintRTB(address to, string calldata matchId) external onlyRole(OPERATOR_ROLE) returns (uint256) {
-        require(maxSupply[matchId] > 0, "Chua dat max supply cho tran");
+        if (maxSupply[matchId] == 0) {
+            maxSupply[matchId] = type(uint256).max;
+        }
         require(minted[matchId] < maxSupply[matchId], "Da het luong RTB cho tran");
 
         uint256 tokenId = nextTokenId++;

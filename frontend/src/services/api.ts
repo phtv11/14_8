@@ -47,15 +47,14 @@ export async function mintRTB(
     const body: any = { to, matchId };
     if (orderId) body.orderId = orderId;
 
-    const response =
-        await api.post(
+    // Include API key header if provided via Vite env (VITE_API_KEY)
+    const apiKey = import.meta.env.VITE_API_KEY;
 
-            "/rtb/mint",
-
-            body
-
-        );
-
+    const response = await api.post(
+        "/rtb/mint",
+        body,
+        apiKey ? { headers: { "x-api-key": apiKey } } : undefined
+    );
 
     return response.data; // { txHash, tokenId }
 

@@ -11,7 +11,7 @@ interface RTT {
 }
 
 export default function Ticket() {
-    const { address, connected, connect } = useWallet();
+    const { address, connected } = useWallet();
     const [tickets, setTickets] = useState<RTT[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -32,6 +32,11 @@ export default function Ticket() {
     }
 
     useEffect(() => {
+        if (!address) {
+            setTickets([]);
+            return;
+        }
+
         loadTickets();
     }, [address]);
 
@@ -41,10 +46,7 @@ export default function Ticket() {
                 <div className="w-full max-w-xl rounded-[32px] border border-white/10 bg-slate-900/70 p-10 text-center shadow-2xl shadow-slate-950/30 backdrop-blur">
                     <p className="text-sm font-semibold uppercase tracking-[0.3em] text-sky-300">Ticket portal</p>
                     <h1 className="mt-3 text-4xl font-bold text-white">My Tickets</h1>
-                    <p className="mt-4 text-slate-400">Connect your wallet to explore your verified ticket rights and RTTs.</p>
-                    <button onClick={connect} className="mt-8 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 px-8 py-3 font-semibold text-white shadow-lg shadow-blue-500/20">
-                        Connect Wallet
-                    </button>
+                    <p className="mt-4 text-slate-400">Connect your wallet.</p>
                 </div>
             </div>
         );
