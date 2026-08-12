@@ -383,27 +383,21 @@ export async function getUserRTBs(
 
 
 
-    const balance =
-        await contract.balanceOf(
-            address
-        );
+    const nextTokenId =
+        await contract.nextTokenId();
 
-
+    const maxTokenId =
+        Number(nextTokenId) - 1;
 
     const result:any[] = [];
 
 
 
     for(
-        let i = 0;
-        i < Number(balance);
-        i++
+        let tokenId = 1;
+        tokenId <= maxTokenId;
+        tokenId++
     ){
-
-        // MVP giả định tokenId tăng từ 1
-
-        const tokenId =
-            i + 1;
 
 
 
@@ -484,28 +478,21 @@ export async function getUserRTTs(
         await getRTTReadContract();
 
 
+    const nextTokenId =
+        await contract.nextTokenId();
 
-    const balance =
-        await contract.balanceOf(
-            address
-        );
-
+    const maxTokenId =
+        Number(nextTokenId) - 1;
 
 
     const result:any[] = [];
 
 
-
     for(
-        let i=0;
-        i<Number(balance);
-        i++
+        let tokenId = 1;
+        tokenId <= maxTokenId;
+        tokenId++
     ){
-
-
-        const tokenId =
-            i + 1;
-
 
 
         try{
@@ -515,7 +502,6 @@ export async function getUserRTTs(
                 await contract.ownerOf(
                     tokenId
                 );
-
 
 
             if(
@@ -530,6 +516,10 @@ export async function getUserRTTs(
                         tokenId
                     );
 
+                const info =
+                    await contract.tokenInfo(
+                        tokenId
+                    );
 
 
                 result.push({
@@ -537,9 +527,11 @@ export async function getUserRTTs(
                     tokenId,
 
                     matchId:
-                    "UNKNOWN",
+                    info.matchId,
 
-                    status
+                    status,
+
+                    ticketRef: undefined
 
                 });
 

@@ -6,7 +6,21 @@ import { useNavigate } from "react-router-dom";
 
 import { useWallet } from "../hooks/useWallet";
 
-import { getUserRTBs } from "../services/contract";
+const PACK_PURCHASE_HISTORY_KEY = "fifa-pack-purchase-history";
+
+function getPackPurchaseCount(walletAddress: string, matchId: string): number {
+    try {
+        const raw = localStorage.getItem(PACK_PURCHASE_HISTORY_KEY);
+        if (!raw) return 0;
+
+        const history = JSON.parse(raw);
+        const walletKey = walletAddress.toLowerCase();
+        const walletHistory = history?.[walletKey] ?? {};
+        return Number(walletHistory[matchId] ?? 0);
+    } catch {
+        return 0;
+    }
+}
 
 type Match = {
     matchId: string;
@@ -15,6 +29,9 @@ type Match = {
     date: string;
     stadium: string;
     category: string;
+    totalSupply: number;
+    maxPerWallet: number;
+    soldCount?: number;
 };
 
 interface CollectPackCardProps {
@@ -30,36 +47,28 @@ export default function CollectPackCard({
 
     const [message, setMessage] = useState("");
 
-    const [owned, setOwned] = useState(false);
+    const [ownedCount, setOwnedCount] = useState(0);
 
     const [checkingOwned, setCheckingOwned] = useState(false);
 
     useEffect(() => {
         let mounted = true;
 
-        async function loadOwned() {
+        function loadPurchaseCount() {
             if (!connected || !address) {
-                setOwned(false);
+                setOwnedCount(0);
                 return;
             }
 
             setCheckingOwned(true);
 
             try {
-                const rtbs = await getUserRTBs(address);
-
-                if (!mounted) return;
-
-                const alreadyOwned = rtbs.some(
-                    (rtb: any) => rtb.matchId === match.matchId
-                );
-
-                setOwned(alreadyOwned);
+                const successfulPurchaseCount = getPackPurchaseCount(address, match.matchId);
+                if (mounted) {
+                    setOwnedCount(successfulPurchaseCount);
+                }
             } catch (e) {
-                console.error(
-                    "Failed loading user RTBs",
-                    e
-                );
+                console.error("Failed loading pack purchase history", e);
             } finally {
                 if (mounted) {
                     setCheckingOwned(false);
@@ -67,7 +76,7 @@ export default function CollectPackCard({
             }
         }
 
-        void loadOwned();
+        loadPurchaseCount();
 
         return () => {
             mounted = false;
@@ -168,7 +177,18 @@ export default function CollectPackCard({
                             </p>
                         </div>
 
-                        {owned ? (
+                        <div className="space-y-2">
+                            <div className="rounded-2xl bg-slate-900/70 px-4 py-3 text-sm text-slate-300">
+                                <p className="text-xs uppercase tracking-wider text-slate-500">RTB Packs</p>
+                                <p className="mt-1 text-white">{match.soldCount ?? 0} / {match.totalSupply}</p>
+                            </div>
+                            <div className="rounded-2xl bg-slate-900/70 px-4 py-3 text-sm text-slate-300">
+                                <p className="text-xs uppercase tracking-wider text-slate-500">Limit each wallet</p>
+                                <p className="mt-1 text-white">{ownedCount} / {match.maxPerWallet}</p>
+                            </div>
+                        </div>
+
+                        {ownedCount >= match.maxPerWallet ? (
                             <div className="rounded-full bg-emerald-600/80 px-4 py-2 font-semibold text-white">
                                 Already Purchased
                             </div>

@@ -30,9 +30,8 @@ export default function RTBCard({ tokenId, matchId, owner }: RTBProps) {
     async function handleRedeem() {
         try {
             const matched = matches.find((m) => m.matchId === matchId) ?? { matchId, teamA: matchId, teamB: "", date: "", stadium: "", category: "" };
-            navigate("/payment", {
+            navigate("/redeem-checkout", {
                 state: {
-                    purchaseMode: "rtb-right",
                     match: matched,
                     rtbTokenId: tokenId
                 }

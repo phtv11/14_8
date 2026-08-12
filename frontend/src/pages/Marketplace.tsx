@@ -100,12 +100,11 @@ export default function Marketplace() {
             try {
                 const owned = await getUserRTBs(address);
                 setOwnedRTBs(owned);
-                if (owned.length > 0) {
+
+                const hasExplicitSelection = typeof state.tokenId === "number" && typeof state.matchId === "string" && state.matchId.trim().length > 0;
+                if (!hasExplicitSelection && owned.length > 0) {
                     setTokenId(owned[0].tokenId);
                     setMatchId(owned[0].matchId);
-                } else {
-                    setTokenId(1);
-                    setMatchId("MATCH-001");
                 }
             } catch {
                 setOwnedRTBs([]);
@@ -113,7 +112,7 @@ export default function Marketplace() {
         }
 
         void loadOwnedRTBs();
-    }, [address, connected]);
+    }, [address, connected, state.matchId, state.tokenId]);
 
     const selectedLabel = useMemo(() => {
         return `RTB #${tokenId} · ${matchId}`;

@@ -6,6 +6,7 @@ export interface MatchRow {
     date: Date;
     stadium: string;
     totalSeats: number;
+    soldCount?: number;
 }
 
 export async function createMatch(match: MatchRow): Promise<void> {
@@ -43,9 +44,21 @@ export async function listMatches(): Promise<MatchRow[]> {
     const pool = await connectDB();
     const result = await pool.request()
         .query(`
-            SELECT [matchId], [name], [date], [stadium], [totalSeats]
-            FROM [dbo].[matches]
-            ORDER BY [date] ASC;
+            SELECT
+                m.[matchId],
+                m.[name],
+                m.[date],
+                m.[stadium],
+                m.[totalSeats],
+                ISNULL(o.[soldCount], 0) AS [soldCount]
+            FROM [dbo].[matches] m
+            LEFT JOIN (
+                SELECT [matchId], COUNT(*) AS [soldCount]
+                FROM [dbo].[orders]
+                WHERE [status] IN ('PENDING', 'MINTED', 'REDEEMED', 'ISSUED')
+                GROUP BY [matchId]
+            ) o ON o.[matchId] = m.[matchId]
+            ORDER BY m.[date] ASC;
         `);
     return result.recordset || [];
 }

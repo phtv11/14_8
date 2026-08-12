@@ -6,6 +6,7 @@ import Home from "./pages/Home";
 import Collection from "./pages/Collection";
 import Ticket from "./pages/Ticket";
 import Payment from "./pages/Payment";
+import RedeemCheckout from "./pages/RedeemCheckout.tsx";
 import Marketplace from "./pages/Marketplace.tsx";
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
                                 <Route path="/collection" element={<Collection />} />
                                 <Route path="/ticket" element={<Ticket />} />
                                 <Route path="/payment" element={<Payment />} />
+                                <Route path="/redeem-checkout" element={<RedeemCheckout />} />
                                 <Route path="/marketplace" element={<Marketplace />} />
                             </Routes>
                         </div>

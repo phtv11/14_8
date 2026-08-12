@@ -2,31 +2,11 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, CheckCircle2, Loader2, Sparkles } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useWallet } from "../hooks/useWallet";
-import { mintRTB, createOrder, submitRedeemTx } from "../services/api";
+import { createOrder, submitRedeemTx } from "../services/api";
 import { redeemRTB } from "../services/contract";
 import { matches as defaultMatches } from "../data/matches";
 
-const PACK_PURCHASE_HISTORY_KEY = "fifa-pack-purchase-history";
 const HIDDEN_REDEEMED_RTBS_KEY = "hidden-redeemed-rtbs";
-
-function recordPackPurchase(walletAddress: string, matchId: string) {
-    try {
-        const raw = localStorage.getItem(PACK_PURCHASE_HISTORY_KEY);
-        const history = raw ? JSON.parse(raw) : {};
-        const walletKey = walletAddress.toLowerCase();
-        const matchCounts = history[walletKey] ?? {};
-        const nextCount = Number(matchCounts[matchId] ?? 0) + 1;
-
-        history[walletKey] = {
-            ...matchCounts,
-            [matchId]: nextCount
-        };
-
-        localStorage.setItem(PACK_PURCHASE_HISTORY_KEY, JSON.stringify(history));
-    } catch {
-        // Ignore malformed local storage history.
-    }
-}
 
 function markRedeemedRTB(tokenId: number) {
     try {
@@ -35,7 +15,7 @@ function markRedeemedRTB(tokenId: number) {
         const next = Array.from(new Set([...hidden, tokenId]));
         localStorage.setItem(HIDDEN_REDEEMED_RTBS_KEY, JSON.stringify(next));
     } catch {
-        // Ignore malformed local storage values.
+        // Ignore malformed storage values.
     }
 }
 
@@ -48,15 +28,14 @@ interface MatchOption {
     category: string;
 }
 
-interface PaymentLocationState {
-    purchaseMode?: "pack" | "rtb-right";
+interface RedeemLocationState {
     match?: MatchOption;
     rtbTokenId?: number;
 }
 
 type CheckoutStep = "checkout" | "processing" | "success";
 
-export default function Payment() {
+export default function RedeemCheckout() {
     const navigate = useNavigate();
     const location = useLocation();
     const { address, connected } = useWallet();
@@ -64,22 +43,12 @@ export default function Payment() {
     const [step, setStep] = useState<CheckoutStep>("checkout");
     const [message, setMessage] = useState("");
     const [txHash, setTxHash] = useState("");
-    const [name, setName] = useState("");
-    const [email, setEmail] = useState("");
     const [seat, setSeat] = useState("");
 
-    const paymentState = (location.state as PaymentLocationState | null) ?? {};
-    const purchaseMode = paymentState.purchaseMode ?? "pack";
+    const redeemState = (location.state as RedeemLocationState | null) ?? {};
     const selectedMatch = useMemo(() => {
-        return paymentState.match ?? defaultMatches[0];
-    }, [paymentState.match]);
-
-    const isRtbRightFlow = purchaseMode === "rtb-right";
-    const pageTitle = isRtbRightFlow ? "Sử dụng quyền mua RTB" : "Thanh toán pack RTB";
-    const successTitle = isRtbRightFlow ? "Sử dụng quyền mua RTB thành công" : "Mua pack RTB thành công";
-    const successSubtitle = isRtbRightFlow
-        ? `Bạn đã nhận RTB cho trận ${selectedMatch.teamA} vs ${selectedMatch.teamB}.`
-        : `Bạn đã nhận RTB cho trận ${selectedMatch.teamA} vs ${selectedMatch.teamB}.`;
+        return redeemState.match ?? defaultMatches[0];
+    }, [redeemState.match]);
 
     async function handleConfirmPayment() {
         try {
@@ -93,54 +62,43 @@ export default function Payment() {
                 return;
             }
 
+            const rtbTokenId = redeemState.rtbTokenId;
+            if (!rtbTokenId && rtbTokenId !== 0) {
+                setMessage("Không tìm thấy RTB để redeem");
+                return;
+            }
+
             setLoading(true);
             setMessage("");
             setTxHash("");
             setStep("processing");
 
-            if (isRtbRightFlow && (paymentState as PaymentLocationState).rtbTokenId) {
-                const rtbTokenId = (paymentState as PaymentLocationState).rtbTokenId as number;
-                const orderPayload = {
-                    userAddress: address,
-                    rtbTokenId,
-                    matchId: selectedMatch.matchId,
-                    category: selectedMatch.category,
-                    seat: seat || "",
-                    price: 20
-                };
+            const orderPayload = {
+                userAddress: address,
+                rtbTokenId,
+                matchId: selectedMatch.matchId,
+                category: selectedMatch.category,
+                seat: seat || "",
+                price: 20
+            };
 
-                const orderResp = await createOrder(orderPayload);
+            const orderResp = await createOrder(orderPayload);
+            const tx = await redeemRTB(rtbTokenId);
+            await submitRedeemTx(tx);
+            markRedeemedRTB(rtbTokenId);
 
-                const txHash = await redeemRTB(rtbTokenId);
-                await submitRedeemTx(txHash);
-                markRedeemedRTB(rtbTokenId);
+            const purchasePayload = {
+                matchId: selectedMatch.matchId,
+                label: `${selectedMatch.teamA} vs ${selectedMatch.teamB}`,
+                purchaseMode: "rtb-right",
+                seat: seat || "",
+                orderId: orderResp?.data?.orderId || orderResp?.orderId
+            };
 
-                const purchasePayload = {
-                    matchId: selectedMatch.matchId,
-                    label: `${selectedMatch.teamA} vs ${selectedMatch.teamB}`,
-                    purchaseMode,
-                    seat: seat || "",
-                    orderId: orderResp?.data?.orderId || orderResp?.orderId
-                };
-
-                localStorage.setItem("lastPurchasedRTB", JSON.stringify(purchasePayload));
-                setTxHash(txHash);
-                setMessage(`Bạn đã sử dụng quyền mua RTB thành công cho ${selectedMatch.teamA} vs ${selectedMatch.teamB}. RTT đã được mint vào ví của bạn.`);
-                setStep("success");
-            } else {
-                const response = await mintRTB(address, selectedMatch.matchId);
-                const purchasePayload = {
-                    matchId: selectedMatch.matchId,
-                    label: `${selectedMatch.teamA} vs ${selectedMatch.teamB}`,
-                    purchaseMode
-                };
-
-                localStorage.setItem("lastPurchasedRTB", JSON.stringify(purchasePayload));
-                recordPackPurchase(address, selectedMatch.matchId);
-                setTxHash(response.txHash || "");
-                setMessage(`Mua pack RTB thành công cho ${selectedMatch.teamA} vs ${selectedMatch.teamB}.`);
-                setStep("success");
-            }
+            localStorage.setItem("lastPurchasedRTB", JSON.stringify(purchasePayload));
+            setTxHash(tx);
+            setMessage(`Bạn đã sử dụng quyền mua RTB thành công cho ${selectedMatch.teamA} vs ${selectedMatch.teamB}. RTT đã được mint vào ví của bạn.`);
+            setStep("success");
         } catch (error: any) {
             setStep("checkout");
             const resp = error?.response;
@@ -168,11 +126,9 @@ export default function Payment() {
 
             <div className="mt-6 text-center">
                 <p className="text-sm font-semibold uppercase tracking-[0.3em] text-sky-300">Checkout</p>
-                <h2 className="mt-2 text-3xl font-semibold text-white">{pageTitle}</h2>
+                <h2 className="mt-2 text-3xl font-semibold text-white">Sử dụng quyền mua RTB</h2>
                 <p className="mt-3 text-slate-400">
-                    {isRtbRightFlow
-                        ? "Sử dụng quyền mua RTB của bạn để nhận ngay NFT cho trận đã chọn."
-                        : "Xác nhận thanh toán để nhận RTB NFT cho trận đấu bạn đã chọn."}
+                    Sử dụng quyền mua RTB của bạn để đổi lấy RTT cho trận đã chọn.
                 </p>
             </div>
 
@@ -180,8 +136,8 @@ export default function Payment() {
                 <div className="mt-8 space-y-6">
                     <div className="rounded-2xl border border-white/10 bg-slate-800/80 p-5 text-sm text-slate-300">
                         <div className="flex items-center justify-between border-b border-white/10 py-3">
-                            <span>Pack</span>
-                            <span className="font-semibold text-white">{isRtbRightFlow ? "RTB quyền mua" : "RTB NFT"}</span>
+                            <span>Thẻ</span>
+                            <span className="font-semibold text-white">RTB quyền mua</span>
                         </div>
                         <div className="flex items-center justify-between border-b border-white/10 py-3">
                             <span>Trận đấu</span>
@@ -204,22 +160,19 @@ export default function Payment() {
                     <div className="rounded-2xl border border-white/10 bg-slate-800/70 p-4 text-sm text-slate-300">
                         <p className="mb-2 font-semibold text-white">Thông tin thanh toán</p>
                         <div className="grid gap-3">
-                            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Họ và tên" className="rounded-lg bg-slate-900/60 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-400" />
-                            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="rounded-lg bg-slate-900/60 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-400" />
-                            {isRtbRightFlow && (
-                                <input value={seat} onChange={(e) => setSeat(e.target.value)} placeholder="Chỗ ngồi (ví dụ: A12)" className="rounded-lg bg-slate-900/60 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-400" />
-                            )}
+                            <input
+                                value={seat}
+                                onChange={(e) => setSeat(e.target.value)}
+                                placeholder="Chỗ ngồi (ví dụ: A12)"
+                                className="rounded-lg bg-slate-900/60 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-400"
+                            />
                         </div>
                     </div>
 
                     <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-                        <p className="font-semibold text-white">
-                            {isRtbRightFlow ? "Thanh toán bằng quyền mua RTB" : "Thanh toán bằng ví của bạn"}
-                        </p>
+                        <p className="font-semibold text-white">Thanh toán bằng quyền mua RTB</p>
                         <p className="mt-1 text-emerald-50/90">
-                            {isRtbRightFlow
-                                ? "Sau khi xác nhận, RTB sẽ được mint và hiện trong My Collect."
-                                : "Sau khi xác nhận, RTB sẽ được mint và hiện trong My Collect."}
+                            Sau khi xác nhận, RTB sẽ bị xóa khỏi collection và RTT sẽ hiện trên trang Ticket.
                         </p>
                     </div>
 
@@ -236,7 +189,7 @@ export default function Payment() {
                         ) : (
                             <>
                                 <Sparkles size={18} />
-                                {isRtbRightFlow ? "Xác nhận sử dụng quyền mua" : "Xác nhận thanh toán"}
+                                Xác nhận sử dụng quyền mua
                             </>
                         )}
                     </button>
@@ -248,7 +201,7 @@ export default function Payment() {
                     <Loader2 className="mx-auto animate-spin text-sky-300" size={32} />
                     <p className="mt-4 text-lg font-semibold text-white">Đang tiến hành thanh toán...</p>
                     <p className="mt-2 text-sm text-slate-400">
-                        Hệ thống đang ký giao dịch RTB trên blockchain cho trận {selectedMatch.teamA} vs {selectedMatch.teamB}.
+                        Hệ thống đang redeem RTB trên blockchain và mint RTT cho trận {selectedMatch.teamA} vs {selectedMatch.teamB}.
                     </p>
                 </div>
             )}
@@ -256,24 +209,20 @@ export default function Payment() {
             {step === "success" && (
                 <div className="mt-8 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-6 text-center text-slate-300">
                     <CheckCircle2 className="mx-auto text-emerald-400" size={40} />
-                    <p className="mt-4 text-xl font-semibold text-white">{successTitle}</p>
-                    <p className="mt-2 text-sm text-slate-300">{successSubtitle}</p>
+                    <p className="mt-4 text-xl font-semibold text-white">Sử dụng quyền mua RTB thành công</p>
+                    <p className="mt-2 text-sm text-slate-300">
+                        Bạn đã nhận RTT cho trận {selectedMatch.teamA} vs {selectedMatch.teamB}.
+                    </p>
                     <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-left text-sm text-slate-300">
                         <p>{message}</p>
                         {txHash && <p className="mt-2 break-all text-xs text-sky-300">Tx: {txHash}</p>}
                     </div>
                     <button
-                        onClick={() => navigate(isRtbRightFlow ? "/ticket" : "/collection")}
+                        onClick={() => navigate("/ticket")}
                         className="mt-6 flex w-full items-center justify-center gap-3 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 py-3 font-semibold text-white shadow-lg shadow-emerald-500/20"
                     >
-                        {isRtbRightFlow ? "Xem My Tickets" : "Xem My Collect"}
+                        Xem My Tickets
                     </button>
-                </div>
-            )}
-
-            {message && step === "checkout" && (
-                <div className="mt-6 rounded-2xl border border-white/10 bg-slate-800/70 p-4 text-sm text-slate-300">
-                    <p>{message}</p>
                 </div>
             )}
         </div>

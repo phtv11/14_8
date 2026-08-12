@@ -1,34 +1,35 @@
+import { useEffect, useState } from "react";
 import HeroBanner from "../components/HeroBanner";
 import CollectPackCard from "../components/CollectPackCard";
 import MatchCard from "../components/MatchCard";
+import { matches as staticMatches } from "../data/matches";
+import { getMatches } from "../services/api";
 
 export default function Home() {
-    const matches = [
-        {
-            matchId: "FWC2026-001",
-            teamA: "Brazil",
-            teamB: "Argentina",
-            date: "12/06/2026",
-            stadium: "MetLife Stadium",
-            category: "Round of 16"
-        },
-        {
-            matchId: "FWC2026-002",
-            teamA: "France",
-            teamB: "Germany",
-            date: "18/06/2026",
-            stadium: "SoFi Stadium",
-            category: "Quarter Final"
-        },
-        {
-            matchId: "FWC2026-FINAL",
-            teamA: "Finalist A",
-            teamB: "Finalist B",
-            date: "19/07/2026",
-            stadium: "MetLife Stadium",
-            category: "Final"
-        }
-    ];
+    const [matches, setMatches] = useState(staticMatches);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        void (async () => {
+            setLoading(true);
+            try {
+                const result = await getMatches();
+                const backendMatches = result.matches as Array<{ matchId: string; soldCount: number }>;
+                const merged = staticMatches.map((match) => {
+                    const backendMatch = backendMatches.find((m) => m.matchId === match.matchId);
+                    return {
+                        ...match,
+                        soldCount: backendMatch?.soldCount ?? 0
+                    };
+                });
+                setMatches(merged);
+            } catch (error) {
+                console.error("Failed loading matches", error);
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, []);
 
     return (
         <main className="flex w-full flex-col items-center px-4 py-6 sm:px-6 lg:px-8">
@@ -55,6 +56,9 @@ export default function Home() {
                             />
                         ))}
                     </div>
+                    {loading && (
+                        <div className="mt-6 text-sm text-slate-400">Loading pack supply data...</div>
+                    )}
                 </section>
 
                 <section className="mx-auto w-full pb-16">

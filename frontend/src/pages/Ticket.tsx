@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import RTTCard from "../components/RTTCard";
 import { useWallet } from "../hooks/useWallet";
+import { issueTicket } from "../services/api";
 import { getUserRTTs } from "../services/contract";
 
 interface RTT {
@@ -28,6 +29,16 @@ export default function Ticket() {
             console.error(error);
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function handleRedeemTicket(tokenId: number) {
+        try {
+            await issueTicket(tokenId, "");
+            await loadTickets();
+        } catch (error: any) {
+            console.error("Redeem RTT failed:", error);
+            alert(error?.response?.data?.message || error?.message || "Không thể redeem RTT");
         }
     }
 
@@ -80,7 +91,14 @@ export default function Ticket() {
                             </div>
                         ) : (
                             tickets.map((ticket) => (
-                                <RTTCard key={ticket.tokenId} tokenId={ticket.tokenId} matchId={ticket.matchId} status={ticket.status} ticketRef={ticket.ticketRef} />
+                                <RTTCard
+                                    key={ticket.tokenId}
+                                    tokenId={ticket.tokenId}
+                                    matchId={ticket.matchId}
+                                    status={ticket.status}
+                                    ticketRef={ticket.ticketRef}
+                                    onRedeem={handleRedeemTicket}
+                                />
                             ))
                         )}
                     </div>

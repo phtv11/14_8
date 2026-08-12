@@ -6,7 +6,9 @@ export const matches = [
         teamB: "Argentina",
         date: "12/06/2026",
         stadium: "MetLife Stadium",
-        category: "Round of 16"
+        category: "Round of 16",
+        totalSupply: 150,
+        maxPerWallet: 1
     },
     {
         matchId: "MATCH",
@@ -14,7 +16,9 @@ export const matches = [
         teamB: "Germany",
         date: "18/06/2026",
         stadium: "SoFi Stadium",
-        category: "Quarter Final"
+        category: "Quarter Final",
+        totalSupply: 80,
+        maxPerWallet: 2
     },
     {
         matchId: "WC26-FINAL",
@@ -22,6 +26,8 @@ export const matches = [
         teamB: "Finalist B",
         date: "19/07/2026",
         stadium: "MetLife Stadium",
-        category: "Final"
+        category: "Final",
+        totalSupply: 50,
+        maxPerWallet: 4
     }
 ];

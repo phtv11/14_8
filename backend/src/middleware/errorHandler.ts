@@ -65,7 +65,7 @@ export default function errorHandler(
         }
     }
 
-    if (statusCode >= 500) {
+    if (statusCode >= 500 && (!message || message === "Internal server error")) {
         message = "Internal server error";
     }
 

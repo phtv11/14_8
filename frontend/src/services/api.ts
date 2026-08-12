@@ -117,7 +117,24 @@ export async function createOrder(
 
 
 
+
+export async function submitRedeemTx(
+    txHash: string
+) {
+    const response = await api.post(
+        "/payment/redeem",
+        { txHash }
+    );
+
+    return response.data;
+}
+
 // Lấy order
+
+export async function getMatches() {
+    const response = await api.get("/matches");
+    return response.data;
+}
 
 export async function getOrder(
 

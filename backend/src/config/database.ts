@@ -62,14 +62,32 @@ export async function initializeDatabase(): Promise<void> {
             );
         END;
 
+        IF NOT EXISTS (SELECT 1 FROM [dbo].[matches] WHERE [matchId] = 'MATCH-001')
+        BEGIN
+            INSERT INTO [dbo].[matches] ([matchId], [name], [date], [stadium], [totalSeats])
+            VALUES ('MATCH-001', 'Brazil vs Argentina', '2026-06-12T00:00:00', 'MetLife Stadium', 150);
+        END;
+
+        IF NOT EXISTS (SELECT 1 FROM [dbo].[matches] WHERE [matchId] = 'MATCH')
+        BEGIN
+            INSERT INTO [dbo].[matches] ([matchId], [name], [date], [stadium], [totalSeats])
+            VALUES ('MATCH', 'France vs Germany', '2026-06-18T00:00:00', 'SoFi Stadium', 80);
+        END;
+
+        IF NOT EXISTS (SELECT 1 FROM [dbo].[matches] WHERE [matchId] = 'WC26-FINAL')
+        BEGIN
+            INSERT INTO [dbo].[matches] ([matchId], [name], [date], [stadium], [totalSeats])
+            VALUES ('WC26-FINAL', 'Finalist A vs Finalist B', '2026-07-19T00:00:00', 'MetLife Stadium', 50);
+        END;
+
         IF OBJECT_ID(N'[dbo].[orders]', N'U') IS NULL
         BEGIN
             CREATE TABLE [dbo].[orders] (
                 [id] NVARCHAR(100) NOT NULL PRIMARY KEY,
                 [userId] NVARCHAR(100) NOT NULL,
                 [matchId] NVARCHAR(100) NOT NULL,
-                [category] NVARCHAR(100) NOT NULL,
-                [seat] NVARCHAR(100) NOT NULL,
+                [category] NVARCHAR(100) NULL,
+                [seat] NVARCHAR(100) NULL,
                 [price] DECIMAL(12, 2) NOT NULL,
                 [status] NVARCHAR(50) NOT NULL,
                 [rtbTokenId] INT NULL,
@@ -87,7 +105,7 @@ export async function initializeDatabase(): Promise<void> {
                 [collection] NVARCHAR(10) NOT NULL, -- 'RTB' or 'RTT'
                 [tokenId] INT NOT NULL,
                 [owner] NVARCHAR(100) NOT NULL,
-                [matchId] NVARCHAR(100) NULL,
+                [matchId] NVARCHAR(100) NOT NULL,
                 [mintedAt] DATETIME2 NULL,
                 [txHash] NVARCHAR(255) NULL,
                 [updatedAt] DATETIME2 NOT NULL DEFAULT GETDATE(),

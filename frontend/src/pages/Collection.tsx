@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
 import RTBCard from "../components/RTBCard";
-import RTTCard from "../components/RTTCard";
 import { useWallet } from "../hooks/useWallet";
-import { getUserRTBs, getUserRTTs } from "../services/contract";
+import { getUserRTBs } from "../services/contract";
+
+const HIDDEN_REDEEMED_RTBS_KEY = "hidden-redeemed-rtbs";
+
+function getHiddenRedeemedRTBs(): number[] {
+    try {
+        const raw = localStorage.getItem(HIDDEN_REDEEMED_RTBS_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
 
 interface RTB {
     tokenId: number;
@@ -20,7 +30,6 @@ interface RTT {
 export default function Collection() {
     const { address, connected } = useWallet();
     const [rtbs, setRTBs] = useState<RTB[]>([]);
-    const [rtts, setRTTs] = useState<RTT[]>([]);
     const [loading, setLoading] = useState(false);
     const [recentPurchase, setRecentPurchase] = useState<string | null>(null);
 
@@ -31,13 +40,12 @@ export default function Collection() {
             }
 
             setLoading(true);
-            const [rtbData, rttData] = await Promise.all([
-                getUserRTBs(address),
-                getUserRTTs(address)
-            ]);
+            const rtbData = await getUserRTBs(address);
 
-            setRTBs(rtbData);
-            setRTTs(rttData);
+            const hiddenRTBIds = new Set(getHiddenRedeemedRTBs());
+            const visibleRTBs = rtbData.filter((rtb) => !hiddenRTBIds.has(rtb.tokenId));
+
+            setRTBs(visibleRTBs);
         } catch (error) {
             console.error(error);
         } finally {
@@ -48,7 +56,6 @@ export default function Collection() {
     useEffect(() => {
         if (!address) {
             setRTBs([]);
-            setRTTs([]);
             setRecentPurchase(null);
             return;
         }
@@ -117,9 +124,6 @@ export default function Collection() {
                     <div className="grid gap-6 lg:grid-cols-2">
                         {rtbs.map((rtb) => (
                             <RTBCard key={rtb.tokenId} tokenId={rtb.tokenId} matchId={rtb.matchId} owner={rtb.owner} />
-                        ))}
-                        {rtts.map((rtt) => (
-                            <RTTCard key={rtt.tokenId} tokenId={rtt.tokenId} matchId={rtt.matchId} status={rtt.status} ticketRef={rtt.ticketRef} />
                         ))}
                     </div>
                 )}
