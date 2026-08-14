@@ -129,6 +129,25 @@ export async function submitRedeemTx(
     return response.data;
 }
 
+export async function verifyPayment(
+    userAddress: string,
+    matchId: string,
+    paymentTxHash: string,
+    amount: number
+) {
+    const response = await api.post(
+        "/payment/verify-payment",
+        {
+            userAddress,
+            matchId,
+            paymentTxHash,
+            amount
+        }
+    );
+
+    return response.data;
+}
+
 // Lấy order
 
 export async function getMatches() {
@@ -161,6 +180,13 @@ export async function getOrder(
 
 
 
+
+export async function getUserOrders(
+    userAddress: string
+) {
+    const response = await api.get(`/payment/user/${encodeURIComponent(userAddress)}`);
+    return response.data;
+}
 
 // ============================
 // RTT API

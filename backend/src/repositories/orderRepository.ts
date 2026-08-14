@@ -11,6 +11,9 @@ export interface OrderRow {
     rtbTokenId?: number | null;
     rttTokenId?: number | null;
     txHash?: string | null;
+    paymentTxHash?: string | null;
+    mintTxHash?: string | null;
+    paymentVerifiedAt?: Date | null;
     idempotencyKey?: string | null;
     createdAt?: Date;
 }
@@ -28,13 +31,16 @@ export async function createOrder(order: OrderRow): Promise<OrderRow> {
         .input("rtbTokenId", order.rtbTokenId || null)
         .input("rttTokenId", order.rttTokenId || null)
         .input("txHash", order.txHash || null)
+        .input("paymentTxHash", order.paymentTxHash || null)
+        .input("mintTxHash", order.mintTxHash || null)
+        .input("paymentVerifiedAt", order.paymentVerifiedAt || null)
         .input("idempotencyKey", order.idempotencyKey || null)
         .query(`
             INSERT INTO [dbo].[orders] (
-                [id], [userId], [matchId], [category], [seat], [price], [status], [rtbTokenId], [rttTokenId], [txHash], [idempotencyKey]
+                [id], [userId], [matchId], [category], [seat], [price], [status], [rtbTokenId], [rttTokenId], [txHash], [paymentTxHash], [mintTxHash], [paymentVerifiedAt], [idempotencyKey]
             )
             VALUES (
-                @id, @userId, @matchId, @category, @seat, @price, @status, @rtbTokenId, @rttTokenId, @txHash, @idempotencyKey
+                @id, @userId, @matchId, @category, @seat, @price, @status, @rtbTokenId, @rttTokenId, @txHash, @paymentTxHash, @mintTxHash, @paymentVerifiedAt, @idempotencyKey
             );
 
             SELECT TOP 1 * FROM [dbo].[orders] WHERE [id] = @id;
@@ -77,7 +83,17 @@ export async function findOrderByRtbTokenId(rtbTokenId: number): Promise<OrderRo
         `);
     return result.recordset[0] || null;
 }
-
+export async function findOrderByPaymentTxHash(paymentTxHash: string): Promise<OrderRow | null> {
+    const pool = await connectDB();
+    const result = await pool.request()
+        .input("paymentTxHash", paymentTxHash)
+        .query(`
+            SELECT TOP 1 *
+            FROM [dbo].[orders]
+            WHERE [paymentTxHash] = @paymentTxHash;
+        `);
+    return result.recordset[0] || null;
+}
 export async function findOrderByRttTokenId(rttTokenId: number): Promise<OrderRow | null> {
     const pool = await connectDB();
     const result = await pool.request()
@@ -90,17 +106,33 @@ export async function findOrderByRttTokenId(rttTokenId: number): Promise<OrderRo
     return result.recordset[0] || null;
 }
 
-export async function updateOrderAfterMint(orderId: string, rtbTokenId: number, txHash: string): Promise<OrderRow | null> {
+export async function updateOrderAfterPaymentVerification(orderId: string, paymentTxHash: string): Promise<OrderRow | null> {
+    const pool = await connectDB();
+    await pool.request()
+        .input("id", orderId)
+        .input("paymentTxHash", paymentTxHash)
+        .input("paymentVerifiedAt", new Date())
+        .query(`
+            UPDATE [dbo].[orders]
+            SET [paymentTxHash] = @paymentTxHash,
+                [paymentVerifiedAt] = @paymentVerifiedAt,
+                [status] = 'PAID'
+            WHERE [id] = @id;
+        `);
+    return findOrderById(orderId);
+}
+
+export async function updateOrderAfterMint(orderId: string, rtbTokenId: number, mintTxHash: string): Promise<OrderRow | null> {
     const pool = await connectDB();
     await pool.request()
         .input("id", orderId)
         .input("rtbTokenId", rtbTokenId)
-        .input("txHash", txHash)
+        .input("mintTxHash", mintTxHash)
         .query(`
             UPDATE [dbo].[orders]
             SET [rtbTokenId] = @rtbTokenId,
-                [txHash] = @txHash,
-                [status] = 'MINTED'
+                [mintTxHash] = @mintTxHash,
+                [status] = 'COMPLETED'
             WHERE [id] = @id;
         `);
     return findOrderById(orderId);
@@ -144,4 +176,17 @@ export async function updateOrderStatus(orderId: string, status: string, rttToke
 
     await request.query(query);
     return findOrderById(orderId);
+}
+
+export async function findOrdersByUser(userAddress: string): Promise<OrderRow[]> {
+    const pool = await connectDB();
+    const result = await pool.request()
+        .input("userId", userAddress)
+        .query(`
+            SELECT *
+            FROM [dbo].[orders]
+            WHERE [userId] = @userId
+            ORDER BY [createdAt] DESC;
+        `);
+    return result.recordset;
 }

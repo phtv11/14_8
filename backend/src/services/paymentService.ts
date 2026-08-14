@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import dotenv from "dotenv";
 import { provider } from "../config/blockchain";
 import RTB from "../contracts/FIFARTB.json";
 import {
@@ -6,9 +7,15 @@ import {
     findOrderById,
     findOrderByIdempotencyKey,
     findOrderByRtbTokenId,
+    findOrderByPaymentTxHash,
     updateOrderStatus as updateOrderStatusRepo,
+    updateOrderAfterPaymentVerification,
+    updateOrderAfterMint,
     OrderRow
 } from "../repositories/orderRepository";
+import * as rtbService from "./rtbService";
+
+dotenv.config({ override: true });
 
 
 
@@ -225,6 +232,228 @@ export async function processRedeemTx(
 
 
 
+
+
+// ================================
+// Verify USDC Payment
+// ================================
+
+export async function verifyUSDCPayment(
+    userAddress: string,
+    matchId: string,
+    paymentTxHash: string,
+    expectedAmount: number
+) {
+    if (!userAddress) throw new Error("Thiếu địa chỉ user");
+    if (!matchId) throw new Error("Match không hợp lệ");
+    if (!paymentTxHash) throw new Error("Thiếu payment transaction hash");
+    if (expectedAmount <= 0) throw new Error("Số tiền không hợp lệ");
+
+    // Check if payment tx hash has been used
+    const existingOrder = await findOrderByPaymentTxHash(paymentTxHash);
+    if (existingOrder) {
+        throw new Error("Payment transaction hash đã được sử dụng");
+    }
+
+    // Get config from environment
+    const USDC_ADDRESS = process.env.USDC_ADDRESS;
+    const PAYMENT_WALLET = process.env.PAYMENT_WALLET;
+    const USDC_DECIMALS = parseInt(process.env.USDC_DECIMALS || "6");
+
+    if (!USDC_ADDRESS || !PAYMENT_WALLET) {
+        throw new Error("USDC configuration không hoàn chỉnh");
+    }
+
+    console.log(`[VERIFY PAYMENT] txHash: ${paymentTxHash}`);
+    console.log(`[VERIFY PAYMENT] userAddress: ${userAddress}`);
+    console.log(`[VERIFY PAYMENT] expectedAmount: ${expectedAmount} USDC`);
+    console.log(`[VERIFY PAYMENT] USDC_ADDRESS config: ${USDC_ADDRESS}`);
+    console.log(`[VERIFY PAYMENT] PAYMENT_WALLET config: ${PAYMENT_WALLET}`);
+
+    // Get transaction receipt
+    const receipt = await provider.getTransactionReceipt(paymentTxHash);
+    if (!receipt) {
+        throw new Error("Transaction chưa được xác nhận");
+    }
+
+    if (!receipt.status) {
+        throw new Error("Transaction thất bại");
+    }
+
+    console.log(`[VERIFY PAYMENT] Receipt status: ${receipt.status}`);
+    console.log(`[VERIFY PAYMENT] Total logs in receipt: ${receipt.logs.length}`);
+
+    // Log ALL contracts involved
+    console.log(`[VERIFY PAYMENT] =========== ALL LOGS IN RECEIPT ===========`);
+    const allContracts = new Set<string>();
+    for (let i = 0; i < receipt.logs.length; i++) {
+        const log = receipt.logs[i];
+        allContracts.add(log.address.toLowerCase());
+        console.log(`[VERIFY PAYMENT] Log ${i}: contract=${log.address}, topics=${log.topics.length}`);
+        if (log.topics.length > 0) {
+            console.log(`[VERIFY PAYMENT]   Topic[0]: ${log.topics[0]}`);
+        }
+    }
+    console.log(`[VERIFY PAYMENT] All unique contracts: ${Array.from(allContracts).join(", ")}`);
+    console.log(`[VERIFY PAYMENT] Looking for USDC contract: ${USDC_ADDRESS.toLowerCase()}`);
+    console.log(`[VERIFY PAYMENT] Match found: ${allContracts.has(USDC_ADDRESS.toLowerCase())}`);
+    console.log(`[VERIFY PAYMENT] ============================================`);
+
+    // USDC.e on Avalanche Fuji uses custom Transfer event signature
+    // NOT standard ERC20: 0xddf252ad1be2c89b69c2b068fc378daf4d6d4c8953b95fe52c97e9dda2e1872a
+    // Custom USDC.e signature: 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
+    const transferEventSignature = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+    const expectedAmount_uint256 = BigInt(expectedAmount) * BigInt(10 ** USDC_DECIMALS);
+
+    console.log(`[VERIFY PAYMENT] Expected amount in wei: ${expectedAmount_uint256.toString()}`);
+
+    let foundTransfer = false;
+    let transferAmount = BigInt(0);
+
+    // Iterate through logs to find USDC Transfer event
+    for (let i = 0; i < receipt.logs.length; i++) {
+        const log = receipt.logs[i];
+        
+        console.log(`[VERIFY PAYMENT] Log ${i}: address=${log.address}, topics.length=${log.topics.length}`);
+
+        // Check if log is from USDC contract
+        if (log.address.toLowerCase() !== USDC_ADDRESS.toLowerCase()) {
+            console.log(`[VERIFY PAYMENT]   - Skipping: contract address mismatch`);
+            continue;
+        }
+
+        console.log(`[VERIFY PAYMENT]   ✓ Found USDC contract log`);
+        console.log(`[VERIFY PAYMENT]   - topics[0]: ${log.topics[0]}`);
+
+        // Check if log is Transfer event
+        if (log.topics[0] !== transferEventSignature) {
+            console.log(`[VERIFY PAYMENT]   - Skipping: not Transfer event`);
+            continue;
+        }
+
+        console.log(`[VERIFY PAYMENT]   ✓ Found Transfer event`);
+
+        // Parse Transfer event
+        // topics[0] = event signature
+        // topics[1] = from (indexed)
+        // topics[2] = to (indexed)
+        // data = value (uint256)
+
+        const from = "0x" + log.topics[1].slice(-40);
+        const to = "0x" + log.topics[2].slice(-40);
+        transferAmount = BigInt(log.data);
+
+        console.log(`[VERIFY PAYMENT]   - from: ${from}`);
+        console.log(`[VERIFY PAYMENT]   - to: ${to}`);
+        console.log(`[VERIFY PAYMENT]   - amount: ${transferAmount.toString()}`);
+
+        // Verify sender = userAddress
+        if (from.toLowerCase() !== userAddress.toLowerCase()) {
+            console.log(`[VERIFY PAYMENT]   - Skipping: sender mismatch`);
+            console.log(`[VERIFY PAYMENT]     Expected sender: ${userAddress.toLowerCase()}`);
+            console.log(`[VERIFY PAYMENT]     Got sender:      ${from.toLowerCase()}`);
+            continue;
+        }
+
+        console.log(`[VERIFY PAYMENT]   ✓ Sender matches`);
+
+        // Verify receiver = PAYMENT_WALLET
+        if (to.toLowerCase() !== PAYMENT_WALLET.toLowerCase()) {
+            console.log(`[VERIFY PAYMENT]   - Skipping: receiver mismatch`);
+            console.log(`[VERIFY PAYMENT]     Expected receiver: ${PAYMENT_WALLET.toLowerCase()}`);
+            console.log(`[VERIFY PAYMENT]     Got receiver:      ${to.toLowerCase()}`);
+            continue;
+        }
+
+        console.log(`[VERIFY PAYMENT]   ✓ Receiver matches`);
+
+        // Verify amount
+        if (transferAmount !== expectedAmount_uint256) {
+            console.log(`[VERIFY PAYMENT]   - Skipping: amount mismatch`);
+            console.log(`[VERIFY PAYMENT]     Expected: ${expectedAmount_uint256.toString()} (${expectedAmount} USDC)`);
+            console.log(`[VERIFY PAYMENT]     Got:      ${transferAmount.toString()} (${(Number(transferAmount) / (10 ** USDC_DECIMALS)).toFixed(USDC_DECIMALS)} USDC)`);
+            continue;
+        }
+
+        console.log(`[VERIFY PAYMENT]   ✓ Amount matches`);
+        foundTransfer = true;
+        break;
+    }
+
+    if (!foundTransfer) {
+        console.error(`[VERIFY PAYMENT] ERROR: USDC transfer not found`);
+        console.error(`[VERIFY PAYMENT] =========== DEBUG INFO ===========`);
+        console.error(`[VERIFY PAYMENT] Looking for transfer FROM: ${userAddress.toLowerCase()}`);
+        console.error(`[VERIFY PAYMENT] Looking for transfer TO: ${PAYMENT_WALLET.toLowerCase()}`);
+        console.error(`[VERIFY PAYMENT] Looking for amount: ${expectedAmount_uint256.toString()} (${expectedAmount} USDC)`);
+        console.error(`[VERIFY PAYMENT] USDC contract expected: ${USDC_ADDRESS.toLowerCase()}`);
+        console.error(`[VERIFY PAYMENT] Total logs found in receipt: ${receipt.logs.length}`);
+        
+        // Log all transfer-like events for debugging
+        let transferEventsFound = 0;
+        for (let i = 0; i < receipt.logs.length; i++) {
+            const log = receipt.logs[i];
+            if (log.topics[0] === transferEventSignature) {
+                transferEventsFound++;
+                const from = "0x" + log.topics[1].slice(-40);
+                const to = "0x" + log.topics[2].slice(-40);
+                const amount = BigInt(log.data);
+                console.error(`[VERIFY PAYMENT] Transfer event #${transferEventsFound}:`);
+                console.error(`[VERIFY PAYMENT]   Contract: ${log.address}`);
+                console.error(`[VERIFY PAYMENT]   From: ${from}`);
+                console.error(`[VERIFY PAYMENT]   To: ${to}`);
+                console.error(`[VERIFY PAYMENT]   Amount: ${amount.toString()}`);
+            }
+        }
+        console.error(`[VERIFY PAYMENT] Total Transfer events found: ${transferEventsFound}`);
+        console.error(`[VERIFY PAYMENT] ====================================`);
+        
+        throw new Error(
+            `USDC transfer not found: expected ${expectedAmount} USDC from ${userAddress} to ${PAYMENT_WALLET}`
+        );
+    }
+
+    console.log(`[VERIFY PAYMENT] ✓ Payment verified successfully!`);
+
+    // Payment verified! Now create/update order and mint RTB
+    const orderId = `ORDER_${Date.now()}`;
+    const order: OrderRow = {
+        id: orderId,
+        userId: userAddress,
+        matchId,
+        category: "Standard",
+        seat: "",
+        price: expectedAmount,
+        status: "PENDING",
+        paymentTxHash,
+        paymentVerifiedAt: null,
+        idempotencyKey: paymentTxHash, // Use paymentTxHash as idempotency key to avoid duplicate NULL values
+        createdAt: new Date()
+    };
+
+    await createOrder(order);
+
+    // Update order after payment verification
+    await updateOrderAfterPaymentVerification(orderId, paymentTxHash);
+
+    // Mint RTB
+    const mintResult = await rtbService.mintRTB(userAddress, matchId);
+
+    // Update order after mint
+    await updateOrderAfterMint(orderId, mintResult.tokenId, mintResult.txHash);
+
+    // Return complete order info
+    const finalOrder = await findOrderById(orderId);
+
+    return {
+        orderId,
+        status: "COMPLETED",
+        paymentTxHash,
+        rtbTokenId: mintResult.tokenId,
+        mintTxHash: mintResult.txHash,
+        order: finalOrder
+    };
+}
 
 
 // ================================

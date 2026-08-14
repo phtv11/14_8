@@ -68,6 +68,11 @@ export default function RedeemCheckout() {
                 return;
             }
 
+            if (!seat.trim()) {
+                setMessage("Vui lòng nhập chỗ ngồi");
+                return;
+            }
+
             setLoading(true);
             setMessage("");
             setTxHash("");
@@ -77,8 +82,8 @@ export default function RedeemCheckout() {
                 userAddress: address,
                 rtbTokenId,
                 matchId: selectedMatch.matchId,
-                category: selectedMatch.category,
-                seat: seat || "",
+                category: selectedMatch.category || "Standard",
+                seat: seat.trim(),
                 price: 20
             };
 
@@ -91,7 +96,7 @@ export default function RedeemCheckout() {
                 matchId: selectedMatch.matchId,
                 label: `${selectedMatch.teamA} vs ${selectedMatch.teamB}`,
                 purchaseMode: "rtb-right",
-                seat: seat || "",
+                seat: seat.trim(),
                 orderId: orderResp?.data?.orderId || orderResp?.orderId
             };
 

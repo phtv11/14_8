@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, Loader2, Sparkles } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, Sparkles, ExternalLink } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useWallet } from "../hooks/useWallet";
-import { mintRTB, createOrder, submitRedeemTx } from "../services/api";
-import { redeemRTB } from "../services/contract";
+import { createOrder, submitRedeemTx, verifyPayment } from "../services/api";
+import { redeemRTB, transferUSDC } from "../services/contract";
 import { matches as defaultMatches } from "../data/matches";
 
 const PACK_PURCHASE_HISTORY_KEY = "fifa-pack-purchase-history";
+const AVALANCHE_FUJI_EXPLORER = "https://testnet.snowtrace.io/tx";
 const HIDDEN_REDEEMED_RTBS_KEY = "hidden-redeemed-rtbs";
 
 function recordPackPurchase(walletAddress: string, matchId: string) {
@@ -54,7 +55,7 @@ interface PaymentLocationState {
     rtbTokenId?: number;
 }
 
-type CheckoutStep = "checkout" | "processing" | "success";
+type CheckoutStep = "checkout" | "payment" | "verification" | "minting" | "success";
 
 export default function Payment() {
     const navigate = useNavigate();
@@ -63,7 +64,9 @@ export default function Payment() {
     const [loading, setLoading] = useState(false);
     const [step, setStep] = useState<CheckoutStep>("checkout");
     const [message, setMessage] = useState("");
-    const [txHash, setTxHash] = useState("");
+    const [paymentTxHash, setPaymentTxHash] = useState("");
+    const [mintTxHash, setMintTxHash] = useState("");
+    const [rtbTokenId, setRtbTokenId] = useState<number | null>(null);
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [seat, setSeat] = useState("");
@@ -95,10 +98,13 @@ export default function Payment() {
 
             setLoading(true);
             setMessage("");
-            setTxHash("");
-            setStep("processing");
+            setPaymentTxHash("");
+            setMintTxHash("");
+            setRtbTokenId(null);
 
             if (isRtbRightFlow && (paymentState as PaymentLocationState).rtbTokenId) {
+                // RTB-RIGHT FLOW (existing redeem flow)
+                setStep("minting");
                 const rtbTokenId = (paymentState as PaymentLocationState).rtbTokenId as number;
                 const orderPayload = {
                     userAddress: address,
@@ -110,7 +116,6 @@ export default function Payment() {
                 };
 
                 const orderResp = await createOrder(orderPayload);
-
                 const txHash = await redeemRTB(rtbTokenId);
                 await submitRedeemTx(txHash);
                 markRedeemedRTB(rtbTokenId);
@@ -124,20 +129,39 @@ export default function Payment() {
                 };
 
                 localStorage.setItem("lastPurchasedRTB", JSON.stringify(purchasePayload));
-                setTxHash(txHash);
+                setMintTxHash(txHash);
                 setMessage(`Bạn đã sử dụng quyền mua RTB thành công cho ${selectedMatch.teamA} vs ${selectedMatch.teamB}. RTT đã được mint vào ví của bạn.`);
                 setStep("success");
             } else {
-                const response = await mintRTB(address, selectedMatch.matchId);
+                // PACK FLOW (new USDC payment flow)
+                const PACK_PRICE = 20; // USDC
+
+                // Step 1: Transfer USDC
+                setStep("payment");
+                setMessage("Đang chuyển USDC từ ví của bạn...");
+
+                const paymentTx = await transferUSDC(PACK_PRICE);
+                setPaymentTxHash(paymentTx);
+                setMessage("USDC đã được chuyển. Đang xác minh thanh toán trên blockchain...");
+
+                // Step 2: Verify payment with backend
+                setStep("verification");
+                const verifyResult = await verifyPayment(address, selectedMatch.matchId, paymentTx, PACK_PRICE);
+
+                setPaymentTxHash(verifyResult.paymentTxHash);
+                setRtbTokenId(verifyResult.rtbTokenId);
+                setMintTxHash(verifyResult.mintTxHash);
+
                 const purchasePayload = {
                     matchId: selectedMatch.matchId,
                     label: `${selectedMatch.teamA} vs ${selectedMatch.teamB}`,
-                    purchaseMode
+                    purchaseMode,
+                    orderId: verifyResult.orderId
                 };
 
                 localStorage.setItem("lastPurchasedRTB", JSON.stringify(purchasePayload));
                 recordPackPurchase(address, selectedMatch.matchId);
-                setTxHash(response.txHash || "");
+
                 setMessage(`Mua pack RTB thành công cho ${selectedMatch.teamA} vs ${selectedMatch.teamB}.`);
                 setStep("success");
             }
@@ -243,10 +267,30 @@ export default function Payment() {
                 </div>
             )}
 
-            {step === "processing" && (
+            {step === "payment" && (
                 <div className="mt-8 rounded-2xl border border-white/10 bg-slate-800/80 p-6 text-center text-slate-300">
                     <Loader2 className="mx-auto animate-spin text-sky-300" size={32} />
-                    <p className="mt-4 text-lg font-semibold text-white">Đang tiến hành thanh toán...</p>
+                    <p className="mt-4 text-lg font-semibold text-white">Đang chuyển USDC...</p>
+                    <p className="mt-2 text-sm text-slate-400">
+                        Vui lòng xác nhận giao dịch trong MetaMask.
+                    </p>
+                </div>
+            )}
+
+            {step === "verification" && (
+                <div className="mt-8 rounded-2xl border border-white/10 bg-slate-800/80 p-6 text-center text-slate-300">
+                    <Loader2 className="mx-auto animate-spin text-sky-300" size={32} />
+                    <p className="mt-4 text-lg font-semibold text-white">Đang xác minh thanh toán...</p>
+                    <p className="mt-2 text-sm text-slate-400">
+                        Hệ thống đang kiểm tra thanh toán USDC trên blockchain.
+                    </p>
+                </div>
+            )}
+
+            {step === "minting" && (
+                <div className="mt-8 rounded-2xl border border-white/10 bg-slate-800/80 p-6 text-center text-slate-300">
+                    <Loader2 className="mx-auto animate-spin text-sky-300" size={32} />
+                    <p className="mt-4 text-lg font-semibold text-white">Đang mint RTB...</p>
                     <p className="mt-2 text-sm text-slate-400">
                         Hệ thống đang ký giao dịch RTB trên blockchain cho trận {selectedMatch.teamA} vs {selectedMatch.teamB}.
                     </p>
@@ -258,10 +302,75 @@ export default function Payment() {
                     <CheckCircle2 className="mx-auto text-emerald-400" size={40} />
                     <p className="mt-4 text-xl font-semibold text-white">{successTitle}</p>
                     <p className="mt-2 text-sm text-slate-300">{successSubtitle}</p>
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-left text-sm text-slate-300">
-                        <p>{message}</p>
-                        {txHash && <p className="mt-2 break-all text-xs text-sky-300">Tx: {txHash}</p>}
+                    
+                    <div className="mt-6 space-y-4">
+                        {/* Payment transaction for pack flow */}
+                        {!isRtbRightFlow && paymentTxHash && (
+                            <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-left">
+                                <p className="text-sm font-semibold text-white mb-2">💰 Giao dịch thanh toán USDC</p>
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="text-xs text-sky-300 break-all">{paymentTxHash}</p>
+                                    <a
+                                        href={`${AVALANCHE_FUJI_EXPLORER}/${paymentTxHash}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 transition text-xs"
+                                    >
+                                        <ExternalLink size={12} />
+                                        Explorer
+                                    </a>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* RTB Token ID and Mint transaction */}
+                        {rtbTokenId !== null && mintTxHash && (
+                            <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-left">
+                                <p className="text-sm font-semibold text-white mb-3">🎫 RTB Token</p>
+                                <div className="mb-3 p-3 rounded-lg bg-slate-800/50 border border-white/5">
+                                    <p className="text-xs text-slate-400 mb-1">Token ID</p>
+                                    <p className="text-lg font-semibold text-emerald-300">{rtbTokenId}</p>
+                                </div>
+                                <p className="text-xs text-slate-400 mb-2">Giao dịch mint:</p>
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="text-xs text-sky-300 break-all">{mintTxHash}</p>
+                                    <a
+                                        href={`${AVALANCHE_FUJI_EXPLORER}/${mintTxHash}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 transition text-xs"
+                                    >
+                                        <ExternalLink size={12} />
+                                        Explorer
+                                    </a>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* RTB-Right flow - only mint tx */}
+                        {isRtbRightFlow && mintTxHash && (
+                            <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-left">
+                                <p className="text-sm font-semibold text-white mb-2">🎫 Giao dịch mint RTT</p>
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="text-xs text-sky-300 break-all">{mintTxHash}</p>
+                                    <a
+                                        href={`${AVALANCHE_FUJI_EXPLORER}/${mintTxHash}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 transition text-xs"
+                                    >
+                                        <ExternalLink size={12} />
+                                        Explorer
+                                    </a>
+                                </div>
+                            </div>
+                        )}
                     </div>
+
+                    <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-left text-sm text-slate-300">
+                        <p>{message}</p>
+                    </div>
+
                     <button
                         onClick={() => navigate(isRtbRightFlow ? "/ticket" : "/collection")}
                         className="mt-6 flex w-full items-center justify-center gap-3 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 py-3 font-semibold text-white shadow-lg shadow-emerald-500/20"
