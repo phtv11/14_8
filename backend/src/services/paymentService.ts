@@ -20,58 +20,83 @@ dotenv.config({ override: true });
 
 
 // ================================
-// Tạo Order sau thanh toán
-// KHÔNG redeem
+// Tạo Order khi mua Pack
+// hoặc UPDATE khi Redeem RTB
 // ================================
 
 export async function pay(
     userAddress: string,
-    rtbTokenId: number,
+    rtbTokenId: number | null | undefined,
     matchId: string,
-    category: string,
-    seat: string,
+    category: string | null | undefined,
+    seat: string | null | undefined,
     price: number,
     idempotencyKey?: string
 ) {
     if (!userAddress) throw new Error("Thiếu địa chỉ user");
     if (!matchId) throw new Error("Match không hợp lệ");
-    if (!category) throw new Error("Category không hợp lệ");
-    if (!seat) throw new Error("Seat không hợp lệ");
     if (price <= 0) throw new Error("Giá vé không hợp lệ");
 
-    if (idempotencyKey) {
-        const existing = await findOrderByIdempotencyKey(idempotencyKey);
-        if (existing) {
-            return {
-                message: "Order đã tồn tại",
-                orderId: existing.id,
-                status: existing.status
-            };
+    // CASE 1: PURCHASE flow (rtbTokenId = null) → CREATE Order
+    if (!rtbTokenId) {
+        // Check idempotency
+        if (idempotencyKey) {
+            const existing = await findOrderByIdempotencyKey(idempotencyKey);
+            if (existing) {
+                return {
+                    message: "Order đã tồn tại",
+                    orderId: existing.id,
+                    status: existing.status
+                };
+            }
         }
+
+        const orderId = `ORDER_${Date.now()}`;
+        const order: OrderRow = {
+            id: orderId,
+            userId: userAddress,
+            matchId,
+            category: null,  // NULL khi mua (chưa redeem)
+            seat: null,      // NULL khi mua (chưa redeem)
+            price,
+            status: "PENDING",
+            rtbTokenId: null,  // chưa mint RTB
+            rttTokenId: null,
+            txHash: null,
+            idempotencyKey: idempotencyKey || null,
+            createdAt: new Date()
+        };
+
+        await createOrder(order);
+
+        return {
+            message: "Tạo order thành công",
+            orderId,
+            status: "PENDING"
+        };
     }
 
-    const orderId = `ORDER_${Date.now()}`;
-    const order: OrderRow = {
-        id: orderId,
-        userId: userAddress,
-        matchId,
-        category,
-        seat,
-        price,
-        status: "PENDING",
-        rtbTokenId,
-        rttTokenId: null,
-        txHash: null,
-        idempotencyKey: idempotencyKey || null,
-        createdAt: new Date()
-    };
+    // CASE 2: REDEEM flow (rtbTokenId != null) → UPDATE Order
+    // Tìm Order theo rtbTokenId
+    const existingOrder = await findOrderByRtbTokenId(rtbTokenId);
+    if (!existingOrder) {
+        throw new Error(`Không tìm thấy order cho RTB #${rtbTokenId}. Vui lòng mua Pack trước.`);
+    }
 
-    await createOrder(order);
+    // Không tạo Order mới, chỉ cập nhật category/seat
+    // Nếu user gọi lần 2 với cùng rtbTokenId, sẽ update category/seat lại (idempotent)
+    const updatedOrder = await updateOrderStatusRepo(
+        existingOrder.id,
+        existingOrder.status,
+        undefined,
+        category,
+        seat
+    );
 
     return {
-        message: "Tạo order thành công",
-        orderId,
-        status: "PENDING"
+        message: "Order cập nhật thành công",
+        orderId: existingOrder.id,
+        status: existingOrder.status
     };
 }
 

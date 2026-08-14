@@ -4,8 +4,8 @@ export interface OrderRow {
     id: string;
     userId: string;
     matchId: string;
-    category: string;
-    seat: string;
+    category: string | null;
+    seat: string | null;
     price: number;
     status: string;
     rtbTokenId?: number | null;
@@ -152,7 +152,13 @@ export async function updateOrderAfterIssue(orderId: string, rttTokenId: number)
     return findOrderById(orderId);
 }
 
-export async function updateOrderStatus(orderId: string, status: string, rttTokenId?: number): Promise<OrderRow | null> {
+export async function updateOrderStatus(
+    orderId: string,
+    status: string,
+    rttTokenId?: number,
+    category?: string | null,
+    seat?: string | null
+): Promise<OrderRow | null> {
     const pool = await connectDB();
     const request = pool.request()
         .input("id", orderId)
@@ -164,12 +170,27 @@ export async function updateOrderStatus(orderId: string, status: string, rttToke
         WHERE [id] = @id;
     `;
 
-    if (typeof rttTokenId === "number") {
-        request.input("rttTokenId", rttTokenId);
+    if (typeof rttTokenId === "number" || category !== undefined || seat !== undefined) {
+        let setClauses = ["[status] = @status"];
+
+        if (typeof rttTokenId === "number") {
+            request.input("rttTokenId", rttTokenId);
+            setClauses.push("[rttTokenId] = @rttTokenId");
+        }
+
+        if (category !== undefined) {
+            request.input("category", category);
+            setClauses.push("[category] = @category");
+        }
+
+        if (seat !== undefined) {
+            request.input("seat", seat);
+            setClauses.push("[seat] = @seat");
+        }
+
         query = `
             UPDATE [dbo].[orders]
-            SET [status] = @status,
-                [rttTokenId] = @rttTokenId
+            SET ${setClauses.join(", ")}
             WHERE [id] = @id;
         `;
     }
