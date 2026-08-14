@@ -1,6 +1,7 @@
 import { provider } from "../config/blockchain";
 import RTB from "../contracts/FIFARTB.json";
 import { upsertTokenIndex } from "../repositories/tokenIndexRepository";
+import { updateOrderUserByRtbTokenId } from "../repositories/orderRepository";
 import { ethers } from "ethers";
 
 let started = false;
@@ -61,10 +62,39 @@ export function startIndexer() {
                                     mintedAt: new Date(),
                                     txHash
                                 });
-                            } else if (parsed.name === "RTBTransferred" || parsed.name === "Transfer") {
-                                // Transfer signature may appear as Transfer or RTBTransferred depending on contract
+                            } else if (parsed.name === "RTBTransferred") {
+                                // Prioritize custom RTBTransferred event
+                                // This is the ONLY event we use for ownership transfer tracking
                                 const tokenId = Number(parsed.args.tokenId?.toString());
                                 const to = String(parsed.args.to ?? parsed.args[2]);
+                                
+                                // Update token_index
+                                await upsertTokenIndex({
+                                    collection: "RTB",
+                                    tokenId,
+                                    owner: to,
+                                    txHash
+                                });
+                                
+                                // Update orders.userId to reflect current holder
+                                // This ensures order follows the RTB ownership through transfers
+                                await updateOrderUserByRtbTokenId(tokenId, to);
+                            } else if (parsed.name === "Transfer") {
+                                // Standard ERC721 Transfer event
+                                // SKIP if this is a burn event (to = zero address)
+                                const tokenId = Number(parsed.args.tokenId?.toString());
+                                const to = String(parsed.args.to ?? parsed.args[2]);
+                                const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+                                
+                                // Skip burn events - don't update orders.userId to zero address
+                                if (to.toLowerCase() === ZERO_ADDRESS.toLowerCase()) {
+                                    // This is a burn event during redeem, ignore
+                                    // RedeemedToRTT event will handle the actual holder
+                                    continue;
+                                }
+                                
+                                // For non-burn Transfer events, update token_index
+                                // but NOT orders.userId - only RTBTransferred updates orders
                                 await upsertTokenIndex({
                                     collection: "RTB",
                                     tokenId,

@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import dotenv from "dotenv";
 import { provider } from "../config/blockchain";
+import { connectDB } from "../config/database";
 import RTB from "../contracts/FIFARTB.json";
 import {
     createOrder,
@@ -127,7 +128,7 @@ export async function getOrder(orderId: string) {
 //
 // Backend:
 // đọc event RedeemedToRTT
-// update order
+// update order với holder từ blockchain
 // ================================
 
 
@@ -168,6 +169,8 @@ export async function processRedeemTx(
 
     let rtbTokenId:number | undefined;
 
+    let holder:string | undefined;
+
 
 
     for(
@@ -206,6 +209,12 @@ export async function processRedeemTx(
                         parsed.args.rttTokenId
                     );
 
+                // Get holder from blockchain event (source of truth)
+                holder =
+                    String(
+                        parsed.args.holder ?? parsed.args[1]
+                    );
+
 
             }
 
@@ -223,11 +232,12 @@ export async function processRedeemTx(
 
     if(
         !rtbTokenId ||
-        !rttTokenId
+        !rttTokenId ||
+        !holder
     ){
 
         throw new Error(
-            "Không tìm thấy event RedeemedToRTT"
+            "Không tìm thấy event RedeemedToRTT hoặc holder"
         );
 
     }
@@ -243,13 +253,36 @@ export async function processRedeemTx(
 
 
 
+    // Update order với:
+    // - rttTokenId
+    // - userId = holder (from blockchain, source of truth)
+    // - status = REDEEMED
     const updated = await updateOrderStatusRepo(
         order.id,
         "REDEEMED",
         rttTokenId
     );
 
+    if (!updated) {
+        throw new Error("Không thể cập nhật order");
+    }
 
+    // Update userId to holder if it changed due to transfer
+    if (updated.userId !== holder) {
+        // Also update userId
+        const pool = await connectDB();
+        await pool.request()
+            .input("id", order.id)
+            .input("userId", holder)
+            .query(`
+                UPDATE [dbo].[orders]
+                SET [userId] = @userId
+                WHERE [id] = @id;
+            `);
+        
+        // Return updated order with new userId
+        return await findOrderById(order.id);
+    }
 
     return updated;
 

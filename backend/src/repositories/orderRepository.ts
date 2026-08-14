@@ -199,6 +199,21 @@ export async function updateOrderStatus(
     return findOrderById(orderId);
 }
 
+export async function updateOrderUserByRtbTokenId(rtbTokenId: number, userId: string): Promise<OrderRow | null> {
+    const pool = await connectDB();
+    await pool.request()
+        .input("rtbTokenId", rtbTokenId)
+        .input("userId", userId)
+        .query(`
+            UPDATE [dbo].[orders]
+            SET [userId] = @userId
+            WHERE [rtbTokenId] = @rtbTokenId;
+        `);
+    
+    // Return the updated order
+    return findOrderByRtbTokenId(rtbTokenId);
+}
+
 export async function findOrdersByUser(userAddress: string): Promise<OrderRow[]> {
     const pool = await connectDB();
     const result = await pool.request()
